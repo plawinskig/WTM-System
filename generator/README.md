@@ -1,6 +1,6 @@
 # Generator danych – `generator/`
 
-Skrypt w Pythonie wypełnia bazę **ewidencja_czasu_pracy** (schemat `work_time`) losowymi danymi. Przy ustawieniach domyślnych w bazie pojawia się ok. **18–21 tys. rekordów**. Każde uruchomienie daje inne dane.
+Skrypt w Pythonie wypełnia bazę **ewidencja_czasu_pracy** (schemat `work_time`) losowymi danymi. Przy ustawieniach domyślnych w bazie pojawia się ok. **17–21 tys. rekordów**. Każde uruchomienie daje inne dane.
 
 ## Pliki
 

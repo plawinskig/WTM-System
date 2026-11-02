@@ -35,7 +35,7 @@ python generate_data.py
 cd ..
 ```
 
-Seeder wypisuje ziarno losowania, kroki 1–10 i liczbę rekordów w 24 tabelach. `TOTAL` wynosi ok. 18–21 tys. Linia „skipped … assignments” nie jest błędem: to przydziały pominięte, bo w strefach zabrakło miejsc.
+Seeder wypisuje ziarno losowania, kroki 1–10 i liczbę rekordów w 24 tabelach. `TOTAL` wynosi ok. 17–21 tys. Linia „skipped … assignments” nie jest błędem: to przydziały pominięte, bo w strefach zabrakło miejsc.
 
 ## 4. Test poprawności danych
 
