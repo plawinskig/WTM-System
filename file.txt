@@ -1,3 +1,0 @@
-psql -h 127.0.0.1 -p 55432 -U projektowaniebazdanych -d ewidencja_czasu_pracy
-DROP SCHEMA IF EXISTS work_time CASCADE;
-psql -X -v ON_ERROR_STOP=1 -h 127.0.0.1 -p 55432 -U projektowaniebazdanych -d ewidencja_czasu_pracy -f sql/01_pelny_schemat.sql
