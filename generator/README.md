@@ -11,6 +11,7 @@ Skrypt w Pythonie wypełnia bazę **ewidencja_czasu_pracy** (schemat `work_time`
 | `reference_data.py` | dane wpisane ręcznie: role, uprawnienia, typy umów i nieobecności, stanowiska, działy, strefy, święta |
 | `check_data.sql` | liczba rekordów w tabelach + 21 testów poprawności danych |
 | `requirements.txt` | potrzebne biblioteki |
+| `TESTING.md` | uruchomienie i test seedera krok po kroku, np. przed oddaniem |
 
 ## Uruchomienie
 
