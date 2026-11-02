@@ -1,21 +1,21 @@
--- Uruchomienie PO 01_schema_postgresql.sql
--- psql -X -v ON_ERROR_STOP=1 -d ewidencja_czasu_pracy -f 02_weryfikacja_i_testy.sql
--- Wyniki inspekcji katalogu pozostaja w bazie, dane testowe sa wycofywane.
+-- ARCHIVE: tests for sql/archive/schema_before_migration.sql.
+-- Run with psql (uses \set and \echo); commands are in README.md.
+-- Catalog checks change nothing; test rows are rolled back.
 \set ON_ERROR_STOP on
-\echo '=== 1. Liczba tabel (oczekiwane: 24) ==='
-SELECT COUNT(*) AS liczba_tabel
+\echo '=== 1. Number of tables (expected: 24) ==='
+SELECT COUNT(*) AS table_count
 FROM information_schema.tables
 WHERE table_schema = 'work_time' AND table_type = 'BASE TABLE';
 
-\echo '=== 2. Klucze glowne i obce ==='
-SELECT constraint_type, COUNT(*) AS liczba
+\echo '=== 2. Primary and foreign keys ==='
+SELECT constraint_type, COUNT(*) AS constraint_count
 FROM information_schema.table_constraints
 WHERE table_schema = 'work_time'
   AND constraint_type IN ('PRIMARY KEY', 'FOREIGN KEY', 'UNIQUE', 'CHECK')
 GROUP BY constraint_type
 ORDER BY constraint_type;
 
-\echo '=== 3. Klucz glowny Assignment (oczekiwane: assignment_id) ==='
+\echo '=== 3. Assignment primary key (expected: assignment_id) ==='
 SELECT kcu.column_name, kcu.ordinal_position
 FROM information_schema.table_constraints tc
 JOIN information_schema.key_column_usage kcu
@@ -26,7 +26,7 @@ WHERE tc.table_schema = 'work_time'
   AND tc.constraint_type = 'PRIMARY KEY'
 ORDER BY kcu.ordinal_position;
 
-\echo '=== 4. Testy transakcyjne z przykladowymi danymi ==='
+\echo '=== 4. Transactional tests with sample data ==='
 BEGIN;
 SET LOCAL search_path TO work_time, public;
 
@@ -70,19 +70,19 @@ SELECT s."shift_id", e."employee_id", z."zone_id"
 FROM "Shift" s CROSS JOIN "Employee" e CROSS JOIN "Zone" z
 WHERE e."work_email"='jan.testowy@example.invalid' AND z."name"='Hala A';
 
--- Nowo dodany przydzial musi miec automatycznie nadany assignment_id.
+-- A newly inserted assignment must get a generated assignment_id.
 DO $$
 BEGIN
     IF NOT EXISTS (
         SELECT 1 FROM "Assignment"
         WHERE "assignment_id" IS NOT NULL AND "assignment_id" > 0
     ) THEN
-        RAISE EXCEPTION 'TEST NIEUDANY: brak automatycznego assignment_id';
+        RAISE EXCEPTION 'TEST FAILED: no generated assignment_id';
     END IF;
-    RAISE NOTICE 'OK: przydzial otrzymal assignment_id';
+    RAISE NOTICE 'OK: the assignment received an assignment_id';
 END $$;
 
--- Kazdy niepoprawny INSERT musi zostac odrzucony przez silnik.
+-- Every invalid INSERT must be rejected by the database engine.
 DO $$
 DECLARE employee_key INTEGER;
 DECLARE shift_key INTEGER;
@@ -95,36 +95,36 @@ BEGIN
     BEGIN
         INSERT INTO "Assignment" ("shift_id", "employee_id", "zone_id")
         VALUES (shift_key, employee_key, zone_key);
-        RAISE EXCEPTION 'TEST NIEUDANY: dopuszczono duplikat Assignment';
+        RAISE EXCEPTION 'TEST FAILED: duplicate Assignment accepted';
     EXCEPTION WHEN unique_violation THEN
-        RAISE NOTICE 'OK: UNIQUE(shift_id, employee_id) blokuje duplikat';
+        RAISE NOTICE 'OK: UNIQUE(shift_id, employee_id) blocks the duplicate';
     END;
 
     BEGIN
         INSERT INTO "Zone" ("branch_id", "name", "capacity")
         SELECT "branch_id", 'Zla strefa', 0 FROM "Branch" WHERE "name"='Oddzial testowy';
-        RAISE EXCEPTION 'TEST NIEUDANY: dopuszczono pojemnosc 0';
+        RAISE EXCEPTION 'TEST FAILED: capacity 0 accepted';
     EXCEPTION WHEN check_violation THEN
-        RAISE NOTICE 'OK: CHECK blokuje pojemnosc 0';
+        RAISE NOTICE 'OK: CHECK blocks capacity 0';
     END;
 
     BEGIN
         INSERT INTO "Assignment" ("shift_id", "employee_id", "zone_id")
         VALUES (shift_key, -999999, zone_key);
-        RAISE EXCEPTION 'TEST NIEUDANY: dopuszczono brakujacego pracownika';
+        RAISE EXCEPTION 'TEST FAILED: non-existent employee accepted';
     EXCEPTION WHEN foreign_key_violation THEN
-        RAISE NOTICE 'OK: FK blokuje nieistniejacego pracownika';
+        RAISE NOTICE 'OK: FK blocks a non-existent employee';
     END;
 END $$;
 
-SELECT a."assignment_id", e."first_name", e."last_name", sh."start_time", sh."end_time", z."name" AS strefa
+SELECT a."assignment_id", e."first_name", e."last_name", sh."start_time", sh."end_time", z."name" AS zone_name
 FROM "Assignment" a
 JOIN "Employee" e ON e."employee_id"=a."employee_id"
 JOIN "Shift" sh ON sh."shift_id"=a."shift_id"
 JOIN "Zone" z ON z."zone_id"=a."zone_id";
 
 ROLLBACK;
-\echo '=== 5. Liczba tabel po wycofaniu testow (oczekiwane: 24) ==='
-SELECT COUNT(*) AS liczba_tabel
+\echo '=== 5. Number of tables after the rollback (expected: 24) ==='
+SELECT COUNT(*) AS table_count
 FROM information_schema.tables
 WHERE table_schema='work_time' AND table_type='BASE TABLE';

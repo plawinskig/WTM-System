@@ -11,7 +11,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       TZ: Europe/Warsaw
     ports:
-      # Tylko lokalny komputer; 55432 zamiast domyslnego 5432.
+      # Local machine only; 55432 instead of the default 5432.
       - "127.0.0.1:55432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data

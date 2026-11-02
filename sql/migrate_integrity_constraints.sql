@@ -1,8 +1,8 @@
--- Rozdzial 8: wiezy integralnosci - migracja dla istniejacej bazy
--- Uruchom TYLKO gdy baza zostala utworzona ze starego baza_postgresql.sql.
--- PostgreSQL 14+, schemat work_time. Zachowuje rekordy; nie usuwa tabel.
--- Migration można wykonać ponownie (odtwarza jedynie 10 kluczy obcych).
--- Uwaga: blokady/ograniczenia musza byc zgodne z dotychczasowymi danymi.
+-- Chapter 8: integrity constraints - migration for an existing database
+-- Run ONLY on a database created from sql/archive/schema_before_migration.sql.
+-- PostgreSQL 14+, schema work_time. Keeps existing rows; does not drop tables.
+-- Safe to re-run (it only recreates 10 foreign keys).
+-- Note: the existing data must satisfy the recreated constraints.
 BEGIN;
 SET LOCAL search_path TO work_time, public;
 
@@ -88,4 +88,4 @@ ALTER TABLE "Registration"
 
 COMMIT;
 
--- UWAGA: pozostałe klucze obce nie są zmieniane; domyslnie ON DELETE/ON UPDATE NO ACTION.
+-- NOTE: other foreign keys are unchanged; they default to ON DELETE/ON UPDATE NO ACTION.
