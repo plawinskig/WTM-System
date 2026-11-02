@@ -47,7 +47,7 @@ DROP SCHEMA IF EXISTS work_time CASCADE;
 
 | Plik | Kiedy uruchamiać |
 |---|---|
-| `sql/01_schema.sql` | na pustej bazie – pełny schemat z kluczami, ograniczeniami `CHECK`, akcjami referencyjnymi i indeksami |
+| `sql/01_schema.sql` | na pustej bazie – pełny schemat z kluczami, ograniczeniami `CHECK` i akcjami referencyjnymi |
 | `sql/02_integrity_tests.sql` | po `01_schema.sql` albo po migracji – testy `CHECK`, kluczy obcych i kaskad w transakcji zakończonej `ROLLBACK`. Wymaga `psql` (używa `\set` i `\echo`); w pgAdmin pomiń linie zaczynające się od `\` |
 | `sql/migrate_integrity_constraints.sql` | tylko na bazie utworzonej z `sql/archive/schema_before_migration.sql` – dodaje akcje referencyjne bez utraty danych. Na bazie z `01_schema.sql` nie jest potrzebna |
 | `sql/archive/` | `schema_before_migration.sql` i `tests_before_migration.sql` – stan sprzed rozdziału 8 |
@@ -68,3 +68,5 @@ Dokumentacja w `docs/` powstała przed uporządkowaniem repozytorium i używa da
 | `02_weryfikacja_i_testy.sql` | `sql/archive/tests_before_migration.sql` |
 
 Polecenia z rozdziału 7 zakładają lokalnego użytkownika `postgres`. W kontenerze z `compose.yaml` użytkownikiem jest `projektowaniebazdanych` – zob. „Szybki start”.
+
+Rozdział 6 wymienia `CREATE INDEX` wśród instrukcji DDL. Indeksy wydajnościowe zostały celowo usunięte ze schematu, bo ich wybór i porównanie `EXPLAIN` przed i po to zakres zajęć 6. W schemacie został tylko unikalny indeks częściowy `uq_schedule_one_published_version`, który jest regułą integralności.

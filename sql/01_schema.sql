@@ -250,35 +250,6 @@ CREATE TABLE "Audit" (
     "change_reason" TEXT
 );
 
--- 7. Indexes supporting typical queries and joins on foreign keys.
-CREATE INDEX "ix_department_branch" ON "Department" ("branch_id");
-CREATE INDEX "ix_team_department" ON "Team" ("department_id");
-CREATE INDEX "ix_employee_team" ON "Employee" ("team_id");
-CREATE INDEX "ix_employee_manager" ON "Employee" ("manager_id");
-CREATE INDEX "ix_zone_branch" ON "Zone" ("branch_id");
-CREATE INDEX "ix_contract_employee" ON "Contract" ("employee_id");
-CREATE INDEX "ix_contract_type" ON "Contract" ("contract_type_id");
-CREATE INDEX "ix_contract_position" ON "Contract" ("position_id");
-CREATE INDEX "ix_annex_contract_effective" ON "Annex" ("contract_id", "effective_from" DESC);
-CREATE INDEX "ix_annex_position" ON "Annex" ("position_id");
-CREATE INDEX "ix_schedule_department" ON "Schedule" ("department_id");
-CREATE INDEX "ix_shift_schedule_start" ON "Shift" ("schedule_id", "start_time");
-CREATE INDEX "ix_assignment_employee" ON "Assignment" ("employee_id");
-CREATE INDEX "ix_assignment_zone" ON "Assignment" ("zone_id");
-CREATE INDEX "ix_availability_employee_time" ON "Availability" ("employee_id", "available_from", "available_to");
-CREATE INDEX "ix_availability_account" ON "Availability" ("entered_by_account_id");
-CREATE INDEX "ix_absence_employee_dates" ON "Absence" ("employee_id", "start_date", "end_date");
-CREATE INDEX "ix_absence_type" ON "Absence" ("absence_type_id");
-CREATE INDEX "ix_absence_account" ON "Absence" ("entered_by_account_id");
-CREATE INDEX "ix_registration_employee_time" ON "Registration" ("employee_id", "event_time");
-CREATE INDEX "ix_registration_shift" ON "Registration" ("shift_id");
-CREATE INDEX "ix_registration_account" ON "Registration" ("entered_by_account_id");
-CREATE INDEX "ix_audit_account_time" ON "Audit" ("account_id", "operation_time");
-CREATE INDEX "ix_audit_object" ON "Audit" ("object_type", "object_id");
-CREATE INDEX "ix_account_role_role" ON "AccountRole" ("role_id");
-CREATE INDEX "ix_role_permission_permission" ON "RolePermission" ("permission_id");
-CREATE INDEX "ix_branch_day_off_day" ON "BranchDayOff" ("day_off_id");
-
 COMMIT;
 
 -- After running: \dn, \dt work_time.*, \d work_time."Assignment" (psql commands).
