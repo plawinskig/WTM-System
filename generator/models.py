@@ -1,36 +1,14 @@
-# -*- coding: utf-8 -*-
-"""
-models.py - database tables described for the SQLAlchemy library (ORM).
-
-Each class below corresponds to one table from the sql/01_schema.sql script.
-Thanks to that, instead of writing INSERT statements the program creates plain
-Python objects, e.g.:
-
-    branch = Branch(name="Oddział Kraków", city="Kraków", address="ul. Długa 1")
-
-and SQLAlchemy turns them into INSERT statements itself.
-
-relationship() describes a link between tables. Thanks to it you can write
-    department.branch = branch
-instead of copying the branch_id number by hand - SQLAlchemy fills it in itself.
-"""
 from sqlalchemy import (Boolean, Column, Date, DateTime, ForeignKey, Integer,
                         MetaData, Numeric, String, Table, Text)
 from sqlalchemy.orm import DeclarativeBase, relationship
 
-# all tables live in the work_time schema
 SCHEMA = "work_time"
 
 
 class Base(DeclarativeBase):
-    """Base class - all tables inherit from it."""
     metadata = MetaData(schema=SCHEMA)
 
 
-# -----------------------------------------------------------------------------
-# Junction tables (many-to-many relationships). They only have two foreign keys,
-# so we describe them more briefly - as a Table object rather than a class.
-# -----------------------------------------------------------------------------
 AccountRole = Table(
     "AccountRole", Base.metadata,
     Column("account_id", Integer, ForeignKey("work_time.Account.account_id"), primary_key=True),
@@ -51,11 +29,7 @@ BranchDayOff = Table(
 )
 
 
-# -----------------------------------------------------------------------------
-# Company structure
-# -----------------------------------------------------------------------------
 class Branch(Base):
-    """Company branch."""
     __tablename__ = "Branch"
     branch_id = Column(Integer, primary_key=True)
     name = Column(String(100), nullable=False)
@@ -64,12 +38,10 @@ class Branch(Base):
 
     departments = relationship("Department", back_populates="branch")
     zones = relationship("Zone", back_populates="branch")
-    # secondary = through the BranchDayOff junction table (many-to-many)
     days_off = relationship("DayOff", secondary=BranchDayOff, back_populates="branches")
 
 
 class Department(Base):
-    """Department within a branch."""
     __tablename__ = "Department"
     department_id = Column(Integer, primary_key=True)
     branch_id = Column(Integer, ForeignKey("work_time.Branch.branch_id"), nullable=False)
@@ -80,7 +52,6 @@ class Department(Base):
 
 
 class Team(Base):
-    """Team within a department."""
     __tablename__ = "Team"
     team_id = Column(Integer, primary_key=True)
     department_id = Column(Integer, ForeignKey("work_time.Department.department_id"),
@@ -92,7 +63,6 @@ class Team(Base):
 
 
 class Position(Base):
-    """Job position (dictionary)."""
     __tablename__ = "Position"
     position_id = Column(Integer, primary_key=True)
     name = Column(String(100), nullable=False)
@@ -100,7 +70,6 @@ class Position(Base):
 
 
 class Zone(Base):
-    """Work zone in a branch, e.g. a loading dock, a hall, an office."""
     __tablename__ = "Zone"
     zone_id = Column(Integer, primary_key=True)
     branch_id = Column(Integer, ForeignKey("work_time.Branch.branch_id"), nullable=False)
@@ -110,11 +79,7 @@ class Zone(Base):
     branch = relationship("Branch", back_populates="zones")
 
 
-# -----------------------------------------------------------------------------
-# Dictionaries
-# -----------------------------------------------------------------------------
 class ContractType(Base):
-    """Contract type (dictionary)."""
     __tablename__ = "ContractType"
     contract_type_id = Column(Integer, primary_key=True)
     name = Column(String(100), nullable=False)
@@ -122,14 +87,12 @@ class ContractType(Base):
 
 
 class AbsenceType(Base):
-    """Absence type (dictionary)."""
     __tablename__ = "AbsenceType"
     absence_type_id = Column(Integer, primary_key=True)
     name = Column(String(100), nullable=False)
 
 
 class DayOff(Base):
-    """Day off (a public holiday or a company day off)."""
     __tablename__ = "DayOff"
     day_off_id = Column(Integer, primary_key=True)
     date = Column(Date, nullable=False)
@@ -139,7 +102,6 @@ class DayOff(Base):
 
 
 class Role(Base):
-    """System user role (dictionary)."""
     __tablename__ = "Role"
     role_id = Column(Integer, primary_key=True)
     role_name = Column(String(100), nullable=False)
@@ -148,18 +110,13 @@ class Role(Base):
 
 
 class Permission(Base):
-    """System permission (dictionary)."""
     __tablename__ = "Permission"
     permission_id = Column(Integer, primary_key=True)
     permission_name = Column(String(100), nullable=False)
     description = Column(Text)
 
 
-# -----------------------------------------------------------------------------
-# Employees and accounts
-# -----------------------------------------------------------------------------
 class Employee(Base):
-    """Employee."""
     __tablename__ = "Employee"
     employee_id = Column(Integer, primary_key=True)
     first_name = Column(String(100), nullable=False)
@@ -170,16 +127,12 @@ class Employee(Base):
     archived = Column(Boolean, nullable=False, default=False)
 
     team = relationship("Team", back_populates="employees")
-    # the manager is also an employee - the table references itself;
-    # remote_side says that employee_id is on the manager's side
     manager = relationship("Employee", remote_side=[employee_id])
-    # uselist=False: an employee has one account (not a list of accounts)
     account = relationship("Account", back_populates="employee", uselist=False)
     contracts = relationship("Contract", back_populates="employee")
 
 
 class Account(Base):
-    """User account (one per employee)."""
     __tablename__ = "Account"
     account_id = Column(Integer, primary_key=True)
     employee_id = Column(Integer, ForeignKey("work_time.Employee.employee_id"), nullable=False)
@@ -191,11 +144,7 @@ class Account(Base):
     roles = relationship("Role", secondary=AccountRole)
 
 
-# -----------------------------------------------------------------------------
-# Contracts and annexes
-# -----------------------------------------------------------------------------
 class Contract(Base):
-    """Employee contract."""
     __tablename__ = "Contract"
     contract_id = Column(Integer, primary_key=True)
     employee_id = Column(Integer, ForeignKey("work_time.Employee.employee_id"), nullable=False)
@@ -214,7 +163,6 @@ class Contract(Base):
 
 
 class Annex(Base):
-    """Contract annex (e.g. a change of the employment fraction)."""
     __tablename__ = "Annex"
     annex_id = Column(Integer, primary_key=True)
     contract_id = Column(Integer, ForeignKey("work_time.Contract.contract_id"), nullable=False)
@@ -229,11 +177,7 @@ class Annex(Base):
     position = relationship("Position")
 
 
-# -----------------------------------------------------------------------------
-# Schedules, shifts and assignments
-# -----------------------------------------------------------------------------
 class Schedule(Base):
-    """Monthly schedule of a department (it may have several versions)."""
     __tablename__ = "Schedule"
     schedule_id = Column(Integer, primary_key=True)
     department_id = Column(Integer, ForeignKey("work_time.Department.department_id"),
@@ -247,7 +191,6 @@ class Schedule(Base):
 
 
 class Shift(Base):
-    """Shift in a schedule (e.g. 06:00-14:00 on a given day)."""
     __tablename__ = "Shift"
     shift_id = Column(Integer, primary_key=True)
     schedule_id = Column(Integer, ForeignKey("work_time.Schedule.schedule_id"), nullable=False)
@@ -258,7 +201,6 @@ class Shift(Base):
 
 
 class Assignment(Base):
-    """Assignment of an employee to a shift and a zone."""
     __tablename__ = "Assignment"
     assignment_id = Column(Integer, primary_key=True)
     shift_id = Column(Integer, ForeignKey("work_time.Shift.shift_id"), nullable=False)
@@ -270,11 +212,7 @@ class Assignment(Base):
     zone = relationship("Zone")
 
 
-# -----------------------------------------------------------------------------
-# Availability, absences, work time registration, audit
-# -----------------------------------------------------------------------------
 class Availability(Base):
-    """Availability declaration (available=True) or unavailability declaration (False)."""
     __tablename__ = "Availability"
     availability_id = Column(Integer, primary_key=True)
     employee_id = Column(Integer, ForeignKey("work_time.Employee.employee_id"), nullable=False)
@@ -289,7 +227,6 @@ class Availability(Base):
 
 
 class Absence(Base):
-    """Employee absence (leave, sick leave, ...)."""
     __tablename__ = "Absence"
     absence_id = Column(Integer, primary_key=True)
     employee_id = Column(Integer, ForeignKey("work_time.Employee.employee_id"), nullable=False)
@@ -307,7 +244,6 @@ class Absence(Base):
 
 
 class Registration(Base):
-    """Work time registration event (work start, break, work end)."""
     __tablename__ = "Registration"
     registration_id = Column(Integer, primary_key=True)
     employee_id = Column(Integer, ForeignKey("work_time.Employee.employee_id"), nullable=False)
@@ -325,7 +261,6 @@ class Registration(Base):
 
 
 class Audit(Base):
-    """Change log entry (who changed what and when)."""
     __tablename__ = "Audit"
     audit_id = Column(Integer, primary_key=True)
     account_id = Column(Integer, ForeignKey("work_time.Account.account_id"))

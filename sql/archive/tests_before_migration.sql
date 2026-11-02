@@ -1,6 +1,3 @@
--- ARCHIVE: tests for sql/archive/schema_before_migration.sql.
--- Run with psql (uses \set and \echo); commands are in README.md.
--- Catalog checks change nothing; test rows are rolled back.
 \set ON_ERROR_STOP on
 \echo '=== 1. Number of tables (expected: 24) ==='
 SELECT COUNT(*) AS table_count
@@ -70,7 +67,6 @@ SELECT s."shift_id", e."employee_id", z."zone_id"
 FROM "Shift" s CROSS JOIN "Employee" e CROSS JOIN "Zone" z
 WHERE e."work_email"='jan.testowy@example.invalid' AND z."name"='Hala A';
 
--- A newly inserted assignment must get a generated assignment_id.
 DO $$
 BEGIN
     IF NOT EXISTS (
@@ -82,7 +78,6 @@ BEGIN
     RAISE NOTICE 'OK: the assignment received an assignment_id';
 END $$;
 
--- Every invalid INSERT must be rejected by the database engine.
 DO $$
 DECLARE employee_key INTEGER;
 DECLARE shift_key INTEGER;

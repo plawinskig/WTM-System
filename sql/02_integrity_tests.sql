@@ -1,6 +1,3 @@
--- Integrity constraint tests (chapter 8); run after sql/01_schema.sql OR after the migration.
--- Run with psql (uses \set and \echo); commands are in README.md.
--- All inserted rows are removed by ROLLBACK (IDENTITY sequences are not rolled back).
 \set ON_ERROR_STOP on
 \echo '=== 1. Overview of CHECK / FK / PK / UNIQUE constraints ==='
 SELECT c.contype AS constraint_type, COUNT(*) AS constraint_count
@@ -65,7 +62,6 @@ BEGIN
     VALUES ('Pracownik', 'Testowy', v_team, v_manager)
     RETURNING "employee_id" INTO v_employee;
 
-    -- CHECK: positive capacity.
     BEGIN
         INSERT INTO "Zone" ("branch_id", "name", "capacity")
         VALUES (v_branch, v_tag || '_bledna', 0);
@@ -74,7 +70,6 @@ BEGIN
         RAISE NOTICE 'OK: CHECK Zone.capacity > 0';
     END;
 
-    -- CHECK: an employee cannot be their own manager.
     BEGIN
         UPDATE "Employee" SET "manager_id" = v_employee
         WHERE "employee_id" = v_employee;
@@ -83,7 +78,6 @@ BEGIN
         RAISE NOTICE 'OK: CHECK Employee.manager_id <> employee_id';
     END;
 
-    -- SET NULL: deleting the manager keeps the employee row.
     DELETE FROM "Employee" WHERE "employee_id" = v_manager;
     SELECT COUNT(*) INTO v_counter FROM "Employee"
     WHERE "employee_id" = v_employee AND "manager_id" IS NULL;
@@ -92,7 +86,6 @@ BEGIN
     END IF;
     RAISE NOTICE 'OK: SET NULL after deleting the manager';
 
-    -- Account and role setup.
     INSERT INTO "Account" ("employee_id", "login", "password_hash")
     VALUES (v_employee, v_tag, 'TEST_FAKE_HASH') RETURNING "account_id" INTO v_account;
     INSERT INTO "Role" ("role_name") VALUES (v_tag) RETURNING "role_id" INTO v_role;
@@ -101,7 +94,6 @@ BEGIN
     INSERT INTO "AccountRole" ("account_id", "role_id") VALUES (v_account, v_role);
     INSERT INTO "RolePermission" ("role_id", "permission_id") VALUES (v_role, v_permission);
 
-    -- ON UPDATE CASCADE: changing the role PK updates both foreign keys.
     v_role_new := -v_role;
     IF EXISTS (SELECT 1 FROM "Role" WHERE "role_id" = v_role_new) THEN
         RAISE EXCEPTION 'Test requires an unused negative role_id';
@@ -115,7 +107,6 @@ BEGIN
     END IF;
     RAISE NOTICE 'OK: ON UPDATE CASCADE updates AccountRole and RolePermission';
 
-    -- ON DELETE CASCADE: deleting a role removes its links, not the account/permission.
     DELETE FROM "Role" WHERE "role_id" = v_role_new;
     IF EXISTS (SELECT 1 FROM "AccountRole" WHERE "account_id" = v_account)
        OR EXISTS (SELECT 1 FROM "RolePermission" WHERE "permission_id" = v_permission)
@@ -134,7 +125,6 @@ BEGIN
     END IF;
     RAISE NOTICE 'OK: ON DELETE CASCADE removes BranchDayOff';
 
-    -- CHECK on contracts; RESTRICT protects the employment history.
     INSERT INTO "Position" ("name") VALUES (v_tag) RETURNING "position_id" INTO v_position;
     INSERT INTO "ContractType" ("name") VALUES (v_tag) RETURNING "contract_type_id" INTO v_contract_type;
     BEGIN
@@ -157,7 +147,6 @@ BEGIN
         RAISE NOTICE 'OK: ON DELETE RESTRICT protects an employee with a contract';
     END;
 
-    -- CHECK on schedule and shift times, IDENTITY for Assignment, UNIQUE on the pair.
     BEGIN
         INSERT INTO "Schedule" ("department_id", "period_from", "period_to",
                                 "version_number", "status")

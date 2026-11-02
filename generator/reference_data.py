@@ -1,19 +1,5 @@
-# -*- coding: utf-8 -*-
-"""
-reference_data.py - hand-written reference data.
-
-Dictionary tables (roles, permissions, contract types, absence types, positions,
-public holidays) have few rows and their content does not change, so they are
-not randomized. The generator copies them into the database exactly as below.
-You can add your own entries here.
-"""
-
-# ----------------------------------------------------------------------------
-# Roles and permissions
-# ----------------------------------------------------------------------------
 ROLES = ["Administrator", "Kierownik", "Planista grafiku", "Kadry", "Pracownik"]
 
-# permission name: description
 PERMISSIONS = {
     "employees.read": "Przeglądanie danych pracowników",
     "employees.edit": "Dodawanie i edycja danych pracowników",
@@ -33,9 +19,8 @@ PERMISSIONS = {
     "audit.read": "Przeglądanie dziennika zmian",
 }
 
-# role: list of its permissions
 ROLE_PERMISSIONS = {
-    "Administrator": list(PERMISSIONS.keys()),      # the administrator has all of them
+    "Administrator": list(PERMISSIONS.keys()),
     "Kierownik": ["employees.read", "contracts.read", "schedules.read", "assignments.edit",
                   "absences.manage", "registrations.verify", "reports.work_time"],
     "Planista grafiku": ["schedules.read", "schedules.edit", "schedules.publish",
@@ -46,10 +31,6 @@ ROLE_PERMISSIONS = {
                   "registrations.own"],
 }
 
-# ----------------------------------------------------------------------------
-# Contracts, absences, positions
-# ----------------------------------------------------------------------------
-# name: description
 CONTRACT_TYPES = {
     "Umowa o pracę na okres próbny": "Umowa o pracę na maksymalnie 3 miesiące",
     "Umowa o pracę na czas określony": "Umowa o pracę do wskazanej daty",
@@ -58,7 +39,6 @@ CONTRACT_TYPES = {
     "Umowa zlecenie": "Umowa cywilnoprawna",
 }
 
-# name: (shortest number of days, longest number of days, how often to draw it)
 ABSENCE_TYPES = {
     "Urlop wypoczynkowy": (1, 10, 40),
     "Zwolnienie lekarskie (L4)": (2, 10, 25),
@@ -70,7 +50,6 @@ ABSENCE_TYPES = {
     "Urlop bezpłatny": (3, 7, 2),
 }
 
-# name: description
 POSITIONS = {
     "Prezes zarządu": "Kierowanie firmą",
     "Dyrektor oddziału": "Zarządzanie oddziałem",
@@ -96,20 +75,9 @@ POSITIONS = {
     "Programista": "Tworzenie programów",
 }
 
-# Employment fraction - drawn from this list. The more often a value appears,
-# the more often it is drawn (full time is the most common).
 EMPLOYMENT_FRACTIONS = ["1.00", "1.00", "1.00", "1.00", "1.00", "1.00", "1.00",
                         "0.75", "0.50", "0.50"]
 
-# ----------------------------------------------------------------------------
-# Company departments
-# ----------------------------------------------------------------------------
-# For each kind of department:
-#   teams              - team names are drawn from this list
-#   positions          - positions of the department's regular employees
-#   shift_start_hours  - when the shifts start (each shift lasts 8 hours)
-#   work_days          - 5 = Monday to Friday, 6 = Monday to Saturday
-#   zones              - work zones where people from this department work
 DEPARTMENT_PROFILES = {
     "Magazyn": {
         "teams": ["Przyjęcia towaru", "Wydania", "Kompletacja"],
@@ -176,13 +144,9 @@ DEPARTMENT_PROFILES = {
     },
 }
 
-# departments every headquarters has
 HEADQUARTERS_DEPARTMENTS = ["Administracja", "Kadry i płace", "Księgowość", "IT"]
-# departments drawn for the branches
 OPERATIONAL_DEPARTMENTS = ["Magazyn", "Produkcja", "Sprzedaż", "Obsługa klienta", "Logistyka"]
 
-# How many people fit in a zone: (min, max) - the value is drawn at random.
-# Zones not listed here get a capacity of 3 to 8 people.
 ZONE_CAPACITY = {
     "Biuro - open space": (25, 40),
     "Recepcja": (2, 3),
@@ -192,12 +156,7 @@ ZONE_CAPACITY = {
 CITIES = ["Warszawa", "Kraków", "Wrocław", "Poznań", "Gdańsk", "Łódź", "Katowice",
           "Lublin", "Szczecin", "Bydgoszcz", "Rzeszów", "Białystok", "Toruń", "Kielce"]
 
-# ----------------------------------------------------------------------------
-# Polish public holidays (date, name) - days off in all branches.
-# To use the script in other years, just add another year.
-# ----------------------------------------------------------------------------
 PUBLIC_HOLIDAYS = [
-    # --- 2025 ---
     ("2025-01-01", "Nowy Rok"),
     ("2025-01-06", "Święto Trzech Króli"),
     ("2025-04-20", "Wielkanoc"),
@@ -212,7 +171,6 @@ PUBLIC_HOLIDAYS = [
     ("2025-12-24", "Wigilia Bożego Narodzenia"),
     ("2025-12-25", "Boże Narodzenie (pierwszy dzień)"),
     ("2025-12-26", "Boże Narodzenie (drugi dzień)"),
-    # --- 2026 ---
     ("2026-01-01", "Nowy Rok"),
     ("2026-01-06", "Święto Trzech Króli"),
     ("2026-04-05", "Wielkanoc"),
@@ -227,7 +185,6 @@ PUBLIC_HOLIDAYS = [
     ("2026-12-24", "Wigilia Bożego Narodzenia"),
     ("2026-12-25", "Boże Narodzenie (pierwszy dzień)"),
     ("2026-12-26", "Boże Narodzenie (drugi dzień)"),
-    # --- 2027 ---
     ("2027-01-01", "Nowy Rok"),
     ("2027-01-06", "Święto Trzech Króli"),
     ("2027-03-28", "Wielkanoc"),

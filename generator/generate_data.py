@@ -1,32 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-generate_data.py - fills the ewidencja_czasu_pracy database with random data.
-
-HOW TO RUN
-    1. docker compose up -d and load sql/01_schema.sql   (see README.md)
-    2. pip install -r requirements.txt                    (first time only)
-    3. python generate_data.py
-
-WHAT THE SCRIPT DOES (step by step)
-    1. connects to the database and deletes old data from all tables,
-    2. writes the reference data: roles, permissions, contract types... (reference_data.py),
-    3. creates branches, departments, teams, zones and days off,
-    4. creates employees together with their accounts and contracts,
-    5. creates schedules and shifts,
-    6. draws absences (leave, sick leave...) and availability declarations,
-    7. assigns employees to shifts,
-    8. creates work time registrations (work start, breaks, work end),
-    9. adds entries to the change log (Audit),
-   10. saves everything to the database and shows how many rows each table has.
-
-The data differ on every run, because the random draws start from a different
-number (the so-called seed). The seed is printed on the screen. If you put it in
-SEED, you get exactly the same data again.
-
-Libraries:
-    SQLAlchemy - ORM: instead of writing INSERTs we create Python objects (models.py),
-    Faker      - random but realistic first names, last names and addresses.
-"""
 import hashlib
 import random
 import sys
@@ -45,25 +16,20 @@ from models import (Absence, AbsenceType, Account, Annex, Assignment, Audit,
                     Employee, Permission, Position, Registration, Role, Schedule,
                     Shift, Team, Zone)
 
-# =============================================================================
-# SETTINGS - these values can be changed
-# =============================================================================
-EMPLOYEE_COUNT = 100          # including the CEO, directors and managers
-BRANCH_COUNT = 2              # the first branch is always the headquarters
-MONTHS_BACK = 2               # how many full months before the current one get schedules
-SEED = None                   # None = different data every time, e.g. 1234 = always the same
+EMPLOYEE_COUNT = 100
+BRANCH_COUNT = 2
+MONTHS_BACK = 2
+SEED = None
 
-# database connection (as in compose.yaml); the password is read from the .env file
 DB_HOST = "127.0.0.1"
 DB_PORT = 55432
 DB_USER = "projektowaniebazdanych"
 DB_NAME = "ewidencja_czasu_pracy"
 
-TEST_PASSWORD = "Test123!"    # password for all generated accounts
+TEST_PASSWORD = "Test123!"
 EMAIL_DOMAIN = "firma.pl"
-SHIFT_HOURS = 8               # every shift lasts 8 hours
+SHIFT_HOURS = 8
 
-# table order - used when truncating and in the summary
 TABLE_NAMES = ["Branch", "Department", "Team", "Position", "Zone", "ContractType",
                "AbsenceType", "DayOff", "Role", "Permission", "Employee", "Account",
                "AccountRole", "RolePermission", "BranchDayOff", "Contract", "Annex",
@@ -73,19 +39,13 @@ TABLE_NAMES = ["Branch", "Department", "Team", "Position", "Zone", "ContractType
 MANAGEMENT_POSITIONS = ["Prezes zarządu", "Dyrektor oddziału", "Kierownik działu",
                         "Lider zespołu"]
 
-# generator of random personal data in Polish
 fake = Faker("pl_PL")
 
-# e-mails and logins already used (they must not repeat)
 used_emails = set()
 used_logins = set()
 
 
-# =============================================================================
-# HELPER FUNCTIONS
-# =============================================================================
 def read_db_password():
-    """Looks for the .env file and returns the password stored as POSTGRES_PASSWORD=..."""
     script_folder = Path(__file__).parent
     candidate_files = [Path(".env"), script_folder / ".env", script_folder.parent / ".env"]
     for env_file in candidate_files:
@@ -99,27 +59,23 @@ def read_db_password():
 
 
 def random_date(start, end):
-    """A random day between start and end (both included)."""
     day_count = (end - start).days
     return start + timedelta(days=random.randint(0, day_count))
 
 
 def next_month(first_day):
-    """For the 1st day of a month returns the 1st day of the next month."""
     if first_day.month == 12:
         return date(first_day.year + 1, 1, 1)
     return date(first_day.year, first_day.month + 1, 1)
 
 
 def previous_month(first_day):
-    """For the 1st day of a month returns the 1st day of the previous month."""
     if first_day.month == 1:
         return date(first_day.year - 1, 12, 1)
     return date(first_day.year, first_day.month - 1, 1)
 
 
 def to_ascii_letters(name):
-    """'Łukasz Żak' -> 'lukaszzak' (for e-mails and logins)."""
     replacements = {"ą": "a", "ć": "c", "ę": "e", "ł": "l", "ń": "n",
                     "ó": "o", "ś": "s", "ź": "z", "ż": "z"}
     result = ""
@@ -128,12 +84,10 @@ def to_ascii_letters(name):
             result = result + replacements[char]
         elif char in "abcdefghijklmnopqrstuvwxyz":
             result = result + char
-        # other characters (spaces, hyphens) are skipped
     return result
 
 
 def hash_test_password():
-    """Hash of the test password. Each account gets its own 'salt', so the hashes differ."""
     salt = ""
     for i in range(8):
         salt = salt + random.choice("abcdefghijklmnopqrstuvwxyz0123456789")
@@ -142,13 +96,11 @@ def hash_test_password():
 
 
 def employment_fraction_on(employee, day):
-    """Employment fraction of the employee on a given day, or None without a contract that day."""
     for contract in employee.contracts:
         contract_active = (contract.start_date <= day
                            and (contract.end_date is None or day <= contract.end_date))
         if contract_active:
             fraction = contract.employment_fraction
-            # an annex changes the fraction from its effective_from day
             for annex in contract.annexes:
                 if annex.effective_from <= day:
                     fraction = annex.employment_fraction
@@ -157,18 +109,10 @@ def employment_fraction_on(employee, day):
 
 
 def at_time(day, hour, minute=0):
-    """Combines a day (date) and a time into a date with a time (datetime)."""
     return datetime(day.year, day.month, day.day, hour, minute)
 
 
-# =============================================================================
-# STEP 0: the period we generate data for
-# =============================================================================
 def determine_period(session):
-    """Returns a dictionary with the most important dates.
-
-    The current time comes from the database server, so it matches NOW() in SQL queries.
-    """
     now = session.execute(text("SELECT LOCALTIMESTAMP(0)")).scalar()
     today = now.date()
 
@@ -180,20 +124,15 @@ def determine_period(session):
     end = next_month(upcoming_month) - timedelta(days=1)
 
     return {
-        "now": now,                            # date and time
+        "now": now,
         "today": today,
-        "start": start,                        # first day with a schedule
-        "upcoming_month": upcoming_month,      # month with a draft schedule
-        "end": end,                            # last day with a schedule
+        "start": start,
+        "upcoming_month": upcoming_month,
+        "end": end,
     }
 
 
-# =============================================================================
-# STEP 1: truncating tables
-# =============================================================================
 def truncate_tables(session):
-    """Deletes all data from the 24 tables. RESTART IDENTITY makes the id numbers
-    start from 1 again, and CASCADE allows deleting data linked by foreign keys."""
     table_list = []
     for name in TABLE_NAMES:
         table_list.append('work_time."' + name + '"')
@@ -201,11 +140,7 @@ def truncate_tables(session):
     session.execute(text(statement))
 
 
-# =============================================================================
-# STEP 2: reference data (written by hand in reference_data.py)
-# =============================================================================
 def add_reference_data(session):
-    """Saves the reference data to the database and returns it as: name -> object."""
     positions = {}
     for name, description in reference_data.POSITIONS.items():
         positions[name] = Position(name=name, description=description)
@@ -229,7 +164,6 @@ def add_reference_data(session):
     roles = {}
     for role_name in reference_data.ROLES:
         role = Role(role_name=role_name)
-        # adding a permission to a role = a new row in the RolePermission table
         for permission_name in reference_data.ROLE_PERMISSIONS[role_name]:
             role.permissions.append(permissions[permission_name])
         roles[role_name] = role
@@ -239,12 +173,7 @@ def add_reference_data(session):
             "absence_types": absence_types, "roles": roles}
 
 
-# =============================================================================
-# STEP 3: branches, departments, teams, zones, days off
-# =============================================================================
 def add_company(session):
-    """Creates the company structure. Returns the 'company' dictionary, to which
-    the next steps add their data (employees, managers etc.)."""
     company = {"branches": [], "departments": [], "teams": [], "board_team": None}
 
     cities = random.sample(reference_data.CITIES, BRANCH_COUNT)
@@ -268,25 +197,21 @@ def add_company(session):
             session.add(department)
             company["departments"].append(department)
 
-            # the headquarters' Administracja department also has a "Zarząd" team for the CEO
             if number == 0 and department_name == "Administracja":
                 board = Team(name="Zarząd", department=department)
                 session.add(board)
                 company["board_team"] = board
 
-            # two random teams in each department
             profile = reference_data.DEPARTMENT_PROFILES[department_name]
             for team_name in random.sample(profile["teams"], 2):
                 team = Team(name=team_name, department=department)
                 session.add(team)
                 company["teams"].append(team)
 
-            # remember the zones this department needs (without duplicates)
             for zone_name in profile["zones"]:
                 if zone_name not in zone_names:
                     zone_names.append(zone_name)
 
-        # zones belong to the branch, not to the department
         for zone_name in zone_names:
             min_capacity, max_capacity = reference_data.ZONE_CAPACITY.get(zone_name, (3, 8))
             zone = Zone(name=zone_name, capacity=random.randint(min_capacity, max_capacity),
@@ -297,23 +222,19 @@ def add_company(session):
 
 
 def add_days_off(session, company, period):
-    """Public holidays (off everywhere) and one company integration day (only in
-    some of the branches). Remembers which days are off in each branch."""
-    days_off = {}                      # branch -> set of dates
+    days_off = {}
     for branch in company["branches"]:
         days_off[branch] = set()
 
-    # 1. public holidays from reference_data.py that fall within our period
     for date_text, name in reference_data.PUBLIC_HOLIDAYS:
         day = date.fromisoformat(date_text)
         if period["start"] <= day <= period["end"]:
             holiday = DayOff(date=day, name=name)
             session.add(holiday)
             for branch in company["branches"]:
-                branch.days_off.append(holiday)      # new row in BranchDayOff
+                branch.days_off.append(holiday)
                 days_off[branch].add(day)
 
-    # 2. company integration day - a random Friday that is not a holiday
     fridays = []
     day = period["start"]
     while day <= period["end"]:
@@ -331,14 +252,8 @@ def add_days_off(session, company, period):
     company["days_off"] = days_off
 
 
-# =============================================================================
-# STEP 4: employees, accounts, roles, contracts
-# =============================================================================
 def create_employee(session, ref, period, team, manager, position, role_names,
                     hire_date, leave_date=None):
-    """Creates an employee together with an account, roles and contracts.
-    leave_date - the day the employee left the company (None = still works here)."""
-    # first and last name - Faker keeps the gender consistent (Kowalski / Kowalska)
     if random.random() < 0.5:
         first_name = fake.first_name_female()
         last_name = fake.last_name_female()
@@ -346,7 +261,6 @@ def create_employee(session, ref, period, team, manager, position, role_names,
         first_name = fake.first_name_male()
         last_name = fake.last_name_male()
 
-    # e-mail in the form firstname.lastname@firma.pl, without duplicates
     email_prefix = to_ascii_letters(first_name) + "." + to_ascii_letters(last_name)
     email = email_prefix + "@" + EMAIL_DOMAIN
     number = 2
@@ -360,7 +274,6 @@ def create_employee(session, ref, period, team, manager, position, role_names,
                         team=team, manager=manager, archived=has_left)
     session.add(employee)
 
-    # login: first letter of the first name + last name, e.g. jkowalski
     login_prefix = to_ascii_letters(first_name)[:1] + to_ascii_letters(last_name)
     login = login_prefix
     number = 2
@@ -369,12 +282,10 @@ def create_employee(session, ref, period, team, manager, position, role_names,
         number = number + 1
     used_logins.add(login)
 
-    # a former employee's account is inactive
     account = Account(employee=employee, login=login, password_hash=hash_test_password(),
                       active=not has_left)
     session.add(account)
 
-    # roles: every added role = a new row in the AccountRole table
     if team.department.name == "Kadry i płace":
         role_names = role_names + ["Kadry"]
     for role_name in role_names:
@@ -385,9 +296,6 @@ def create_employee(session, ref, period, team, manager, position, role_names,
 
 
 def add_contracts(session, ref, period, employee, position, hire_date, leave_date):
-    """Contracts follow one another:
-         probation (90 days) -> fixed term (1 year) -> permanent.
-    Every tenth regular employee has a single civil-law contract (umowa zlecenie) instead."""
     if position in MANAGEMENT_POSITIONS:
         fraction = Decimal("1.00")
     else:
@@ -410,17 +318,13 @@ def add_contracts(session, ref, period, employee, position, hire_date, leave_dat
 
     last_contract = None
     for contract_type, start, end in contract_plan:
-        # contracts that would only start after our period do not exist yet
         if start > period["end"]:
             break
-        # the employee left before this contract would start
         if leave_date is not None and start > leave_date:
             break
-        # the employee left during this contract - it ends on the leaving day
         if leave_date is not None and (end is None or end > leave_date):
             end = leave_date
 
-        # a contract is signed a few days before it starts (but not in the future)
         signed = start - timedelta(days=random.randint(1, 14))
         if signed > period["today"]:
             signed = period["today"]
@@ -431,7 +335,6 @@ def add_contracts(session, ref, period, employee, position, hire_date, leave_dat
         session.add(contract)
         last_contract = contract
 
-    # annex: every fourth open-ended contract running for half a year changes the fraction
     if last_contract is None or position in MANAGEMENT_POSITIONS:
         return
     half_year_ago = period["today"] - timedelta(days=180)
@@ -449,19 +352,14 @@ def add_contracts(session, ref, period, employee, position, hire_date, leave_dat
 
 
 def add_employees(session, ref, company, period):
-    """Creates the hierarchy: CEO -> directors -> department managers -> team leaders
-    -> regular employees. A manager is always created before their subordinates,
-    so the hierarchy cannot contain a cycle (A is B's manager, B is A's manager)."""
     today = period["today"]
     year = timedelta(days=365)
 
-    # --- CEO (at the headquarters, in the "Zarząd" team) ---
     ceo = create_employee(session, ref, period, company["board_team"], None, "Prezes zarządu",
                           ["Pracownik", "Kierownik", "Administrator"],
                           random_date(today - 10 * year, today - 6 * year))
-    company["executives"] = [ceo]       # the CEO and the directors do not work shifts
+    company["executives"] = [ceo]
 
-    # --- branch directors (the CEO runs the headquarters) ---
     directors = {company["branches"][0]: ceo}
     for branch in company["branches"][1:]:
         first_team = branch.departments[0].teams[0]
@@ -471,10 +369,9 @@ def add_employees(session, ref, company, period):
         directors[branch] = director
         company["executives"].append(director)
 
-    # --- a manager for each department ---
-    company["department_managers"] = {}       # department -> manager
+    company["department_managers"] = {}
     for department in company["departments"]:
-        team = department.teams[-1]           # last team (certainly not "Zarząd")
+        team = department.teams[-1]
         roles = ["Pracownik", "Kierownik", "Planista grafiku"]
         if department.name == "IT":
             roles.append("Administrator")
@@ -483,8 +380,7 @@ def add_employees(session, ref, company, period):
                                   random_date(today - 7 * year, today - 2 * year))
         company["department_managers"][department] = manager
 
-    # --- a leader for each team ---
-    leaders = {}                              # team -> leader
+    leaders = {}
     for team in company["teams"]:
         leader = create_employee(session, ref, period, team,
                                  company["department_managers"][team.department],
@@ -492,18 +388,14 @@ def add_employees(session, ref, company, period):
                                  random_date(today - 6 * year, today - 2 * year))
         leaders[team] = leader
 
-    # --- regular employees ---
-    # more people go to departments with 3 shifts (warehouse, production) than to offices
     weights = []
     for team in company["teams"]:
         profile = reference_data.DEPARTMENT_PROFILES[team.department.name]
         weights.append(len(profile["shift_start_hours"]))
 
-    # the management already exists: CEO, directors, department managers, leaders
     existing_count = (len(company["executives"]) + len(company["departments"])
                       + len(company["teams"]))
     for i in range(EMPLOYEE_COUNT - existing_count):
-        # random.choices draws with weights (higher weight = more often); [0] is the drawn team
         team = random.choices(company["teams"], weights=weights)[0]
         profile = reference_data.DEPARTMENT_PROFILES[team.department.name]
         position = random.choice(profile["positions"])
@@ -511,20 +403,16 @@ def add_employees(session, ref, company, period):
         draw = random.random()
         leave_date = None
         if draw < 0.06:
-            # former employee - left within the last year
             hire_date = random_date(today - 4 * year, today - year)
             leave_date = random_date(today - timedelta(days=300), today - timedelta(days=1))
         elif draw < 0.16:
-            # new person - hired within our period (sometimes only from next month)
             hire_date = random_date(period["start"], period["end"] - timedelta(days=14))
         else:
-            # has worked here for a long time
             hire_date = random_date(today - 7 * year, period["start"] - timedelta(days=1))
 
         create_employee(session, ref, period, team, leaders[team], position, ["Pracownik"],
                         hire_date, leave_date)
 
-    # HR department accounts - their owners enter e.g. sick leaves
     company["hr_accounts"] = []
     for department in company["departments"]:
         if department.name == "Kadry i płace":
@@ -534,19 +422,12 @@ def add_employees(session, ref, company, period):
                         company["hr_accounts"].append(employee.account)
 
 
-# =============================================================================
-# STEP 5: schedules and shifts
-# =============================================================================
 def add_shifts(session, department, schedule, start, end, company, shifts):
-    """Creates schedule shifts for every working day of the department.
-    If a 'shifts' dictionary is given, stores every shift in it under the key
-    (department, day, shift number) - used later when assigning employees."""
     profile = reference_data.DEPARTMENT_PROFILES[department.name]
     days_off = company["days_off"][department.branch]
 
     day = start
     while day <= end:
-        # weekday(): 0 = Monday, 5 = Saturday, 6 = Sunday
         is_work_day = day.weekday() < profile["work_days"] and day not in days_off
         if is_work_day:
             shift_number = 0
@@ -562,11 +443,7 @@ def add_shifts(session, department, schedule, start, end, company, shifts):
 
 
 def add_schedules(session, company, period):
-    """Each department has a schedule for every month:
-       - past months and the current month: published schedule,
-         sometimes with an earlier, archived version 1,
-       - next month: draft schedule."""
-    shifts = {}            # (department, day, shift number) -> shift from the schedule in force
+    shifts = {}
     for department in company["departments"]:
         month = period["start"]
         while month <= period["upcoming_month"]:
@@ -576,7 +453,6 @@ def add_schedules(session, company, period):
                 schedule = Schedule(department=department, period_from=month,
                                     period_to=month_end, version_number=1, status="draft")
             elif random.random() < 0.25:
-                # the schedule was revised: version 1 is archived, version 2 is in force
                 old_schedule = Schedule(department=department, period_from=month,
                                         period_to=month_end, version_number=1,
                                         status="archived")
@@ -596,12 +472,8 @@ def add_schedules(session, company, period):
     return shifts
 
 
-# =============================================================================
-# STEP 6: absences and availability declarations
-# =============================================================================
 def all_employees(company):
-    """List of all company employees (collected from the teams)."""
-    employees = [company["executives"][0]]          # the CEO is in the "Zarząd" team
+    employees = [company["executives"][0]]
     for team in company["teams"]:
         for employee in team.employees:
             employees.append(employee)
@@ -609,8 +481,6 @@ def all_employees(company):
 
 
 def add_absences(session, ref, company, period):
-    """0-3 absences per employee. The absences of one person do not overlap.
-    Returns: employee -> set of days on which they are absent."""
     absence_days = {}
     type_names = list(reference_data.ABSENCE_TYPES.keys())
     weights = []
@@ -620,26 +490,21 @@ def add_absences(session, ref, company, period):
     for employee in all_employees(company):
         absence_days[employee] = set()
         for i in range(random.randint(0, 3)):
-            # weighted draw: annual leave more often, unpaid leave less often
             type_name = random.choices(type_names, weights=weights)[0]
             shortest, longest, weight = reference_data.ABSENCE_TYPES[type_name]
             start = random_date(period["start"], period["end"])
             end = start + timedelta(days=random.randint(shortest, longest) - 1)
 
-            # sick leave cannot be planned in advance
             if type_name == "Zwolnienie lekarskie (L4)" and start > period["today"]:
                 continue
-            # the absence must fall within a contract
             if (employment_fraction_on(employee, start) is None
                     or employment_fraction_on(employee, end) is None):
                 continue
-            # list of the days of this absence
             days = []
             day = start
             while day <= end:
                 days.append(day)
                 day = day + timedelta(days=1)
-            # it must not overlap another absence of this person
             overlaps = False
             for day in days:
                 if day in absence_days[employee]:
@@ -647,12 +512,10 @@ def add_absences(session, ref, company, period):
             if overlaps:
                 continue
 
-            # sick leave is usually entered by HR, everything else by the employee
             entered_by = employee.account
             if type_name == "Zwolnienie lekarskie (L4)":
                 entered_by = random.choice(company["hr_accounts"])
 
-            # every tenth absence was cancelled
             if random.random() < 0.1:
                 status = "cancelled"
             else:
@@ -668,8 +531,6 @@ def add_absences(session, ref, company, period):
 
 
 def add_availability(session, company, period):
-    """Employees declare for chosen days (06:00-22:00) whether they can work.
-    Returns: employee -> set of days on which they CANNOT work."""
     unavailable_days = {}
     for employee in all_employees(company):
         unavailable_days[employee] = set()
@@ -679,7 +540,7 @@ def add_availability(session, company, period):
         for i in range(random.randint(0, 3)):
             day = random_date(period["today"] - timedelta(days=30), period["end"])
             if day in chosen_days:
-                continue                   # one declaration per day
+                continue
             chosen_days.add(day)
 
             can_work = random.random() < 0.4
@@ -692,12 +553,7 @@ def add_availability(session, company, period):
     return unavailable_days
 
 
-# =============================================================================
-# STEP 7: assigning employees to shifts and zones
-# =============================================================================
 def find_free_zone(zones, shift, occupied_places):
-    """Returns a random zone that still has a free place on this shift,
-    or None when all of them are full."""
     order = list(zones)
     random.shuffle(order)
     for zone in order:
@@ -710,19 +566,10 @@ def find_free_zone(zones, shift, occupied_places):
 
 
 def add_assignments(session, company, shifts, absence_days, unavailable_days, period):
-    """Assignment rules:
-    - an employee works only in their own department and in their branch's zones,
-    - for a whole week they work the same shift (e.g. 6-14), and the shift changes
-      every week - thanks to that they always have at least 11 hours of rest,
-    - in a week they work at most 5 x employment fraction days (full time = 5 days),
-    - they do not work without a contract, during an absence or on a declared unavailable day,
-    - a zone cannot hold more people than its capacity.
-    Returns the list of assignments to shifts that have already started (for registrations)."""
-    occupied_places = {}          # (zone, shift start) -> number of people
+    occupied_places = {}
     past_assignments = []
     no_place_count = 0
 
-    # Mondays of all weeks in the period
     mondays = []
     monday = period["start"] - timedelta(days=period["start"].weekday())
     while monday <= period["end"]:
@@ -733,13 +580,11 @@ def add_assignments(session, company, shifts, absence_days, unavailable_days, pe
         profile = reference_data.DEPARTMENT_PROFILES[department.name]
         shift_type_count = len(profile["shift_start_hours"])
 
-        # zones where this department may work
         department_zones = []
         for zone in department.branch.zones:
             if zone.name in profile["zones"]:
                 department_zones.append(zone)
 
-        # employees of the department (without the CEO and the directors)
         department_employees = []
         for team in department.teams:
             for employee in team.employees:
@@ -750,41 +595,35 @@ def add_assignments(session, company, shifts, absence_days, unavailable_days, pe
         for monday in mondays:
             employee_number = 0
             for employee in department_employees:
-                # 1. which shift this person works this week (rotation).
-                #    % is the remainder of division - with 3 shift types it gives
-                #    0, 1, 2, 0, 1, 2 ... i.e. a different shift every week (6:00, 14:00, 22:00)
                 shift_number = (employee_number + week_number) % shift_type_count
                 employee_number = employee_number + 1
 
-                # 2. days of the week on which the department has this shift
                 days = []
                 for i in range(7):
                     day = monday + timedelta(days=i)
                     if (department, day, shift_number) in shifts:
                         days.append(day)
 
-                # 3. how many days they can work this week (by employment fraction)
                 fraction = None
                 for day in days:
                     fraction = employment_fraction_on(employee, day)
                     if fraction is not None:
                         break
                 if fraction is None:
-                    continue                # no contract this week
-                day_limit = int(5 * fraction)   # 1.00 -> 5 days, 0.75 -> 3 days, 0.50 -> 2 days
+                    continue
+                day_limit = int(5 * fraction)
 
-                # 4. draw the working days from the possible ones
                 random.shuffle(days)
                 days_worked = 0
                 for day in days:
                     if days_worked >= day_limit:
                         break
                     if employment_fraction_on(employee, day) is None:
-                        continue            # no contract that day
+                        continue
                     if day in absence_days[employee]:
-                        continue            # leave, sick leave ...
+                        continue
                     if day in unavailable_days[employee]:
-                        continue            # declared they cannot work
+                        continue
 
                     shift = shifts[(department, day, shift_number)]
                     zone = find_free_zone(department_zones, shift, occupied_places)
@@ -804,13 +643,8 @@ def add_assignments(session, company, shifts, absence_days, unavailable_days, pe
     return past_assignments
 
 
-# =============================================================================
-# STEP 8: work time registration
-# =============================================================================
 def add_registration_event(session, assignment, event_type, event_time, status):
-    """One card swipe: event_type is work_start, break_start, break_end or work_end."""
     employee = assignment.employee
-    # the system saves the event a few seconds later
     entered_at = event_time + timedelta(seconds=random.randint(0, 5))
     session.add(Registration(employee=employee, shift=assignment.shift,
                              entered_by=employee.account, event_type=event_type,
@@ -819,9 +653,6 @@ def add_registration_event(session, assignment, event_type, event_time, status):
 
 
 def add_registrations(session, past_assignments, period):
-    """For every started shift: work start, sometimes a break, work end.
-    Late arrivals of more than 10 minutes get the 'needs_explanation' status.
-    Events from the last 7 days are not verified yet ('unverified')."""
     now = period["now"]
     week_ago = now - timedelta(days=7)
 
@@ -832,7 +663,6 @@ def add_registrations(session, past_assignments, period):
         else:
             status = "unverified"
 
-        # 1. work start - usually a few minutes early, sometimes late
         seconds = random.randint(0, 59)
         if random.random() < 0.05:
             work_start = shift.start_time + timedelta(minutes=random.randint(11, 40),
@@ -843,10 +673,9 @@ def add_registrations(session, past_assignments, period):
                                                       seconds=seconds)
             start_status = status
         if work_start > now:
-            continue                    # the shift is only just starting
+            continue
         add_registration_event(session, assignment, "work_start", work_start, start_status)
 
-        # 2. break - roughly in the middle of the shift, recorded every other time
         if random.random() < 0.5:
             break_start = shift.start_time + timedelta(hours=4, minutes=random.randint(0, 30))
             break_end = break_start + timedelta(minutes=random.randint(15, 30))
@@ -854,23 +683,16 @@ def add_registrations(session, past_assignments, period):
                 add_registration_event(session, assignment, "break_start", break_start, status)
                 add_registration_event(session, assignment, "break_end", break_end, status)
 
-        # 3. work end - usually a few minutes after the end of the shift
         work_end = shift.end_time + timedelta(minutes=random.randint(-2, 15),
                                               seconds=random.randint(0, 59))
         if work_end < now:
             add_registration_event(session, assignment, "work_end", work_end, status)
 
 
-# =============================================================================
-# STEP 9: change log (Audit)
-# =============================================================================
 def add_audit_entries(session, company, period):
-    """Audit entries point to records by their id. The database assigns the ids
-    when saving, which is why session.flush() is called before this step."""
     now = period["now"]
     year_ago = period["today"] - timedelta(days=365)
 
-    # a) schedule publication (done by the department manager)
     for schedule in session.query(Schedule).all():
         manager_account = company["department_managers"][schedule.department].account
         if schedule.status == "published":
@@ -888,7 +710,6 @@ def add_audit_entries(session, company, period):
                               value_before="published", value_after="archived",
                               change_reason="Zastąpiony nowszą wersją"))
 
-    # b) contracts concluded within the last year (entered by HR)
     for contract in session.query(Contract).all():
         if contract.conclusion_date >= year_ago:
             when = at_time(contract.conclusion_date, random.randint(8, 15), random.randint(0, 59))
@@ -901,7 +722,6 @@ def add_audit_entries(session, company, period):
                               str(contract.employment_fraction),
                               change_reason="Zawarcie umowy"))
 
-    # c) employees who left the company
     for employee in session.query(Employee).filter(Employee.archived == True).all():
         last_contract = employee.contracts[-1]
         when = at_time(last_contract.end_date + timedelta(days=1), 8, random.randint(0, 59))
@@ -913,7 +733,6 @@ def add_audit_entries(session, company, period):
                           value_before="false", value_after="true",
                           change_reason="Zakończenie współpracy"))
 
-    # d) late arrivals detected automatically (no account - done by the system)
     to_explain = session.query(Registration).filter(
         Registration.verification_status == "needs_explanation").all()
     for registration in to_explain:
@@ -927,9 +746,6 @@ def add_audit_entries(session, company, period):
                           change_reason="Automatyczna kontrola: spóźnienie"))
 
 
-# =============================================================================
-# SUMMARY
-# =============================================================================
 def print_summary(session):
     print()
     print("Table                 Rows")
@@ -943,11 +759,7 @@ def print_summary(session):
     print("TOTAL".ljust(16), str(total).rjust(9))
 
 
-# =============================================================================
-# MAIN PROGRAM
-# =============================================================================
 def main():
-    # 1. random seed - a new one on every run
     seed = SEED
     if seed is None:
         seed = random.randint(1, 1000000)
@@ -955,7 +767,6 @@ def main():
     fake.seed_instance(seed)
     print("Random seed:", seed, "(put it in SEED to generate the same data again)")
 
-    # 2. database connection
     url = URL.create("postgresql+psycopg", username=DB_USER, password=read_db_password(),
                      host=DB_HOST, port=DB_PORT, database=DB_NAME)
     engine = create_engine(url)
@@ -969,8 +780,6 @@ def main():
               " and that the password in .env is correct.")
         sys.exit(1)
 
-    # 3. data generation. Everything happens in one transaction:
-    #    if an error occurs along the way, nothing is saved to the database.
     with Session(engine) as session:
         period = determine_period(session)
         print("Data from", period["start"], "to", period["end"], "(today:", period["today"], ")")
@@ -995,8 +804,6 @@ def main():
         print(" 8. Work time registrations")
         add_registrations(session, past_assignments, period)
 
-        # flush() sends the objects created so far to the database (without committing),
-        # so they get the id numbers needed in the audit log
         session.flush()
         print(" 9. Change log (Audit)")
         add_audit_entries(session, company, period)
