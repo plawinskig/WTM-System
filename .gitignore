@@ -8,3 +8,5 @@ __pycache__/
 # Word and LibreOffice lock files
 ~$*
 .~lock.*#
+
+.vscode
