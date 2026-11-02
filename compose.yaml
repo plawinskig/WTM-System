@@ -1,0 +1,33 @@
+name: projektowaniebazdanych
+
+services:
+  postgres:
+    image: docker.io/library/postgres:17
+    container_name: projektowaniebazdanych-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ewidencja_czasu_pracy
+      POSTGRES_USER: projektowaniebazdanych
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      TZ: Europe/Warsaw
+    ports:
+      # Tylko lokalny komputer; 55432 zamiast domyslnego 5432.
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - baza_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U projektowaniebazdanych -d ewidencja_czasu_pracy"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+
+volumes:
+  pgdata:
+    name: projektowaniebazdanych_pgdata
+
+networks:
+  baza_net:
+    name: projektowaniebazdanych_net

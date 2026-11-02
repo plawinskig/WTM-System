@@ -1,0 +1,34 @@
+SYSTEM ZARZADZANIA CZASEM PRACY — ROZDZIAL 8
+PostgreSQL 14+, baza ewidencja_czasu_pracy, schemat work_time
+
+NAJWAŻNIEJSZE: NIE URUCHAMIAJ OBU WARIANTOW SQL!
+
+WARIANT A: MASZ NOWA, PUSTA BAZE
+  psql -X -U postgres -d ewidencja_czasu_pracy -v ON_ERROR_STOP=1 -f baza_postgresql_z_integralnoscia.sql
+  psql -X -U postgres -d ewidencja_czasu_pracy -v ON_ERROR_STOP=1 -f 04_testy_wiezow_integralnosci.sql
+
+WARIANT B: MASZ JUZ BAZE Z POPRZEDNIEGO SKRYPTU
+  psql -X -U postgres -d ewidencja_czasu_pracy -v ON_ERROR_STOP=1 -f 03_migracja_wiezow_integralnosci.sql
+  psql -X -U postgres -d ewidencja_czasu_pracy -v ON_ERROR_STOP=1 -f 04_testy_wiezow_integralnosci.sql
+
+Nowa wersja zawiera:
+  24 tabele, 31 kluczy obcych, 16 nazwanych ograniczen CHECK;
+  6 ON DELETE CASCADE (tabele lacznikowe), 1 ON DELETE SET NULL
+  (Employee.manager_id), 3 ON DELETE RESTRICT (dane historyczne).
+  ON UPDATE CASCADE — 6 lacznikow i Employee.manager_id.
+  Pozostale klucze obce pozostaja domyslnie NO ACTION.
+  Assignment ma PRIMARY KEY(assignment_id) i UNIQUE(shift_id, employee_id).
+
+PLIKI
+  baza_postgresql_z_integralnoscia.sql - caly schemat na nowa baze
+  03_migracja_wiezow_integralnosci.sql - aktualizacja istniejacej bazy
+  04_testy_wiezow_integralnosci.sql - testy z ROLLBACK
+  Rozdzial_8_Wiezy_integralnosci.docx / .pdf - nowy rozdzial projektu
+  Dokumentacja_rozdzialy_6_7_8.docx / .pdf - dokumentacja scalona
+  01_poprzedni_skrypt_DDL.sql - poprzedni schemat jako archiwalny kontekst
+  02_poprzednie_testy.sql - poprzednie testy jako dodatkowa kontrola
+
+UWAGA: 04_testy... zawiera polecenia konsoli psql (\set i \echo).
+W pgAdmin trzeba pominac linie rozpoczynajace sie od ukosnika wstecznego.
+Wyniki testow sa oczekiwane; nie uruchomiono ich na dzialajacym PostgreSQL
+w srodowisku przygotowania plikow.
