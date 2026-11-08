@@ -1,6 +1,4 @@
-SET search_path TO work_time;
 
-\echo '=== 1. Headcount and FTE by branch, department and team (with subtotals) ==='
 WITH params AS (
     SELECT CURRENT_DATE AS report_date
 ),
@@ -17,12 +15,14 @@ current_terms AS (
                 FROM "Annex" later
                 WHERE later.contract_id = an.contract_id
                   AND later.effective_from <= p.report_date
-                  AND later.effective_from > an.effective_from)
+                  AND later.effective_from > an.effective_from
+            )
     WHERE c.start_date <= p.report_date
       AND (CASE WHEN an.annex_id IS NULL THEN c.end_date ELSE an.end_date END IS NULL
            OR CASE WHEN an.annex_id IS NULL THEN c.end_date ELSE an.end_date END >= p.report_date)
 )
-SELECT CASE WHEN GROUPING(b.name) = 1 THEN 'ALL BRANCHES' ELSE b.name END AS branch,
+SELECT CASE WHEN GROUPING(b.name) = 1 THEN 'ALL BRANCHES' 
+            ELSE b.name END AS branch,
        CASE WHEN GROUPING(b.name) = 1 THEN ''
             WHEN GROUPING(d.name) = 1 THEN 'branch total'
             ELSE d.name END AS department,
@@ -42,9 +42,9 @@ WHERE e.archived = FALSE
 GROUP BY ROLLUP (b.name, d.name, t.name)
 ORDER BY GROUPING(b.name), b.name, GROUPING(d.name), d.name, GROUPING(t.name), t.name;
 
-\echo '=== 2. Chain of superiors up to the CEO (search by last name) ==='
+
 WITH RECURSIVE params AS (
-    SELECT CAST(NULL AS VARCHAR) AS last_name_pattern
+    SELECT 'G%' AS last_name_pattern
 ),
 current_position AS (
     SELECT c.employee_id, pos.name AS position_name
