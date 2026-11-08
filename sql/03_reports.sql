@@ -89,7 +89,7 @@ LEFT JOIN current_position sp ON sp.employee_id = sup.employee_id
 GROUP BY employee.employee_id, employee.first_name, employee.last_name, ep.position_name
 ORDER BY superior_count, chain_of_command, employee;
 
-\echo '=== 3. Employment terms in force on a given day (contract or latest annex) ==='
+
 WITH params AS (
     SELECT CURRENT_DATE AS report_date,
            CAST(NULL AS VARCHAR) AS team_name
