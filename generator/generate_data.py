@@ -16,10 +16,13 @@ from models import (Absence, AbsenceType, Account, Annex, Assignment, Audit,
                     Employee, Permission, Position, Registration, Role, Schedule,
                     Shift, Team, Zone)
 
-EMPLOYEE_COUNT = 100
-BRANCH_COUNT = 2
+# Together they give at least one million rows. The total also depends on the day of
+# the month, because registrations are created only for past shifts.
+EMPLOYEE_COUNT = 6200
+BRANCH_COUNT = 124
 MONTHS_BACK = 2
 SEED = None
+COMMIT_BATCH_SIZE = 10000
 
 DB_HOST = "127.0.0.1"
 DB_PORT = 55432
@@ -43,6 +46,24 @@ fake = Faker("pl_PL")
 
 used_emails = set()
 used_logins = set()
+
+
+class BatchCommitter:
+    """Adds rows to the session and commits every COMMIT_BATCH_SIZE rows."""
+
+    def __init__(self, session):
+        self.session = session
+        self.uncommitted_count = 0
+
+    def add(self, row):
+        self.session.add(row)
+        self.uncommitted_count = self.uncommitted_count + 1
+        if self.uncommitted_count >= COMMIT_BATCH_SIZE:
+            self.commit()
+
+    def commit(self):
+        self.session.commit()
+        self.uncommitted_count = 0
 
 
 def read_db_password():
@@ -176,8 +197,8 @@ def add_reference_data(session):
 def add_company(session):
     company = {"branches": [], "departments": [], "teams": [], "board_team": None}
 
-    cities = random.sample(reference_data.CITIES, BRANCH_COUNT)
-    for number, city in enumerate(cities):
+    for number in range(BRANCH_COUNT):
+        city = fake.unique.city()
         if number == 0:
             branch_name = "Centrala - " + city
             department_names = (reference_data.HEADQUARTERS_DEPARTMENTS
@@ -329,9 +350,12 @@ def add_contracts(session, ref, period, employee, position, hire_date, leave_dat
         if signed > period["today"]:
             signed = period["today"]
 
+        # The explicit empty list keeps annexes loaded; otherwise reading them after a
+        # commit would run one SELECT per contract.
         contract = Contract(employee=employee, contract_type=ref["contract_types"][contract_type],
                             position=ref["positions"][position], conclusion_date=signed,
-                            start_date=start, end_date=end, employment_fraction=fraction)
+                            start_date=start, end_date=end, employment_fraction=fraction,
+                            annexes=[])
         session.add(contract)
         last_contract = contract
 
@@ -422,7 +446,7 @@ def add_employees(session, ref, company, period):
                         company["hr_accounts"].append(employee.account)
 
 
-def add_shifts(session, department, schedule, start, end, company, shifts):
+def add_shifts(committer, department, schedule, start, end, company, shifts):
     profile = reference_data.DEPARTMENT_PROFILES[department.name]
     days_off = company["days_off"][department.branch]
 
@@ -435,14 +459,14 @@ def add_shifts(session, department, schedule, start, end, company, shifts):
                 shift_start = at_time(day, hour)
                 shift_end = shift_start + timedelta(hours=SHIFT_HOURS)
                 shift = Shift(schedule=schedule, start_time=shift_start, end_time=shift_end)
-                session.add(shift)
+                committer.add(shift)
                 if shifts is not None:
                     shifts[(department, day, shift_number)] = shift
                 shift_number = shift_number + 1
         day = day + timedelta(days=1)
 
 
-def add_schedules(session, company, period):
+def add_schedules(committer, company, period):
     shifts = {}
     for department in company["departments"]:
         month = period["start"]
@@ -456,8 +480,8 @@ def add_schedules(session, company, period):
                 old_schedule = Schedule(department=department, period_from=month,
                                         period_to=month_end, version_number=1,
                                         status="archived")
-                session.add(old_schedule)
-                add_shifts(session, department, old_schedule, month, month_end, company, None)
+                committer.add(old_schedule)
+                add_shifts(committer, department, old_schedule, month, month_end, company, None)
                 schedule = Schedule(department=department, period_from=month,
                                     period_to=month_end, version_number=2,
                                     status="published")
@@ -466,8 +490,8 @@ def add_schedules(session, company, period):
                                     period_to=month_end, version_number=1,
                                     status="published")
 
-            session.add(schedule)
-            add_shifts(session, department, schedule, month, month_end, company, shifts)
+            committer.add(schedule)
+            add_shifts(committer, department, schedule, month, month_end, company, shifts)
             month = next_month(month)
     return shifts
 
@@ -480,7 +504,7 @@ def all_employees(company):
     return employees
 
 
-def add_absences(session, ref, company, period):
+def add_absences(committer, ref, company, period):
     absence_days = {}
     type_names = list(reference_data.ABSENCE_TYPES.keys())
     weights = []
@@ -523,14 +547,14 @@ def add_absences(session, ref, company, period):
                 for day in days:
                     absence_days[employee].add(day)
 
-            session.add(Absence(employee=employee,
-                                absence_type=ref["absence_types"][type_name],
-                                entered_by=entered_by, start_date=start, end_date=end,
-                                status=status))
+            committer.add(Absence(employee=employee,
+                                  absence_type=ref["absence_types"][type_name],
+                                  entered_by=entered_by, start_date=start, end_date=end,
+                                  status=status))
     return absence_days
 
 
-def add_availability(session, company, period):
+def add_availability(committer, company, period):
     unavailable_days = {}
     for employee in all_employees(company):
         unavailable_days[employee] = set()
@@ -544,10 +568,10 @@ def add_availability(session, company, period):
             chosen_days.add(day)
 
             can_work = random.random() < 0.4
-            session.add(Availability(employee=employee, entered_by=employee.account,
-                                     available_from=at_time(day, 6),
-                                     available_to=at_time(day, 22),
-                                     available=can_work))
+            committer.add(Availability(employee=employee, entered_by=employee.account,
+                                       available_from=at_time(day, 6),
+                                       available_to=at_time(day, 22),
+                                       available=can_work))
             if not can_work:
                 unavailable_days[employee].add(day)
     return unavailable_days
@@ -565,7 +589,7 @@ def find_free_zone(zones, shift, occupied_places):
     return None
 
 
-def add_assignments(session, company, shifts, absence_days, unavailable_days, period):
+def add_assignments(committer, company, shifts, absence_days, unavailable_days, period):
     occupied_places = {}
     past_assignments = []
     no_place_count = 0
@@ -632,7 +656,7 @@ def add_assignments(session, company, shifts, absence_days, unavailable_days, pe
                         continue
 
                     assignment = Assignment(shift=shift, employee=employee, zone=zone)
-                    session.add(assignment)
+                    committer.add(assignment)
                     days_worked = days_worked + 1
                     if shift.start_time < period["now"]:
                         past_assignments.append(assignment)
@@ -643,16 +667,16 @@ def add_assignments(session, company, shifts, absence_days, unavailable_days, pe
     return past_assignments
 
 
-def add_registration_event(session, assignment, event_type, event_time, status):
+def add_registration_event(committer, assignment, event_type, event_time, status):
     employee = assignment.employee
     entered_at = event_time + timedelta(seconds=random.randint(0, 5))
-    session.add(Registration(employee=employee, shift=assignment.shift,
-                             entered_by=employee.account, event_type=event_type,
-                             event_time=event_time, entry_time=entered_at,
-                             verification_status=status))
+    committer.add(Registration(employee=employee, shift=assignment.shift,
+                               entered_by=employee.account, event_type=event_type,
+                               event_time=event_time, entry_time=entered_at,
+                               verification_status=status))
 
 
-def add_registrations(session, past_assignments, period):
+def add_registrations(committer, past_assignments, period):
     now = period["now"]
     week_ago = now - timedelta(days=7)
 
@@ -674,22 +698,22 @@ def add_registrations(session, past_assignments, period):
             start_status = status
         if work_start > now:
             continue
-        add_registration_event(session, assignment, "work_start", work_start, start_status)
+        add_registration_event(committer, assignment, "work_start", work_start, start_status)
 
         if random.random() < 0.5:
             break_start = shift.start_time + timedelta(hours=4, minutes=random.randint(0, 30))
             break_end = break_start + timedelta(minutes=random.randint(15, 30))
             if break_end < now:
-                add_registration_event(session, assignment, "break_start", break_start, status)
-                add_registration_event(session, assignment, "break_end", break_end, status)
+                add_registration_event(committer, assignment, "break_start", break_start, status)
+                add_registration_event(committer, assignment, "break_end", break_end, status)
 
         work_end = shift.end_time + timedelta(minutes=random.randint(-2, 15),
                                               seconds=random.randint(0, 59))
         if work_end < now:
-            add_registration_event(session, assignment, "work_end", work_end, status)
+            add_registration_event(committer, assignment, "work_end", work_end, status)
 
 
-def add_audit_entries(session, company, period):
+def add_audit_entries(session, committer, company, period):
     now = period["now"]
     year_ago = period["today"] - timedelta(days=365)
 
@@ -697,41 +721,41 @@ def add_audit_entries(session, company, period):
         manager_account = company["department_managers"][schedule.department].account
         if schedule.status == "published":
             when = at_time(schedule.period_from - timedelta(days=7), 10, random.randint(0, 59))
-            session.add(Audit(account=manager_account, operation_time=when,
-                              operation_type="UPDATE", object_type="Schedule",
-                              object_id=schedule.schedule_id, field_name="status",
-                              value_before="draft", value_after="published",
-                              change_reason="Publikacja grafiku"))
+            committer.add(Audit(account=manager_account, operation_time=when,
+                                operation_type="UPDATE", object_type="Schedule",
+                                object_id=schedule.schedule_id, field_name="status",
+                                value_before="draft", value_after="published",
+                                change_reason="Publikacja grafiku"))
         if schedule.status == "archived":
             when = at_time(schedule.period_from - timedelta(days=3), 9, random.randint(0, 59))
-            session.add(Audit(account=manager_account, operation_time=when,
-                              operation_type="UPDATE", object_type="Schedule",
-                              object_id=schedule.schedule_id, field_name="status",
-                              value_before="published", value_after="archived",
-                              change_reason="Zastąpiony nowszą wersją"))
+            committer.add(Audit(account=manager_account, operation_time=when,
+                                operation_type="UPDATE", object_type="Schedule",
+                                object_id=schedule.schedule_id, field_name="status",
+                                value_before="published", value_after="archived",
+                                change_reason="Zastąpiony nowszą wersją"))
 
     for contract in session.query(Contract).all():
         if contract.conclusion_date >= year_ago:
             when = at_time(contract.conclusion_date, random.randint(8, 15), random.randint(0, 59))
             if when > now:
                 when = now
-            session.add(Audit(account=random.choice(company["hr_accounts"]), operation_time=when,
-                              operation_type="INSERT", object_type="Contract",
-                              object_id=contract.contract_id,
-                              value_after=contract.contract_type.name + ", etat " +
-                              str(contract.employment_fraction),
-                              change_reason="Zawarcie umowy"))
+            committer.add(Audit(account=random.choice(company["hr_accounts"]), operation_time=when,
+                                operation_type="INSERT", object_type="Contract",
+                                object_id=contract.contract_id,
+                                value_after=contract.contract_type.name + ", etat " +
+                                str(contract.employment_fraction),
+                                change_reason="Zawarcie umowy"))
 
     for employee in session.query(Employee).filter(Employee.archived == True).all():
         last_contract = employee.contracts[-1]
         when = at_time(last_contract.end_date + timedelta(days=1), 8, random.randint(0, 59))
         if when > now:
             when = now
-        session.add(Audit(account=random.choice(company["hr_accounts"]), operation_time=when,
-                          operation_type="UPDATE", object_type="Employee",
-                          object_id=employee.employee_id, field_name="archived",
-                          value_before="false", value_after="true",
-                          change_reason="Zakończenie współpracy"))
+        committer.add(Audit(account=random.choice(company["hr_accounts"]), operation_time=when,
+                            operation_type="UPDATE", object_type="Employee",
+                            object_id=employee.employee_id, field_name="archived",
+                            value_before="false", value_after="true",
+                            change_reason="Zakończenie współpracy"))
 
     to_explain = session.query(Registration).filter(
         Registration.verification_status == "needs_explanation").all()
@@ -739,11 +763,11 @@ def add_audit_entries(session, company, period):
         when = registration.event_time + timedelta(hours=1)
         if when > now:
             when = now
-        session.add(Audit(account=None, operation_time=when, operation_type="UPDATE",
-                          object_type="Registration", object_id=registration.registration_id,
-                          field_name="verification_status", value_before="unverified",
-                          value_after="needs_explanation",
-                          change_reason="Automatyczna kontrola: spóźnienie"))
+        committer.add(Audit(account=None, operation_time=when, operation_type="UPDATE",
+                            object_type="Registration", object_id=registration.registration_id,
+                            field_name="verification_status", value_before="unverified",
+                            value_after="needs_explanation",
+                            change_reason="Automatyczna kontrola: spóźnienie"))
 
 
 def print_summary(session):
@@ -780,12 +804,15 @@ def main():
               " and that the password in .env is correct.")
         sys.exit(1)
 
-    with Session(engine) as session:
+    # Objects stay in use across batch commits; expiring them would make every later
+    # attribute read run a SELECT.
+    with Session(engine, expire_on_commit=False) as session:
         period = determine_period(session)
         print("Data from", period["start"], "to", period["end"], "(today:", period["today"], ")")
 
         print(" 1. Truncating tables")
         truncate_tables(session)
+        session.commit()
         print(" 2. Reference data")
         ref = add_reference_data(session)
         print(" 3. Branches, departments, teams, zones, days off")
@@ -793,23 +820,28 @@ def main():
         add_days_off(session, company, period)
         print(" 4. Employees, accounts and contracts")
         add_employees(session, ref, company, period)
+        # Steps 2-4 share one transaction: a commit between them would leave collections
+        # such as team.employees unloaded, and reading them would query the database.
+        session.commit()
+
+        committer = BatchCommitter(session)
         print(" 5. Schedules and shifts")
-        shifts = add_schedules(session, company, period)
+        shifts = add_schedules(committer, company, period)
         print(" 6. Absences and availability")
-        absence_days = add_absences(session, ref, company, period)
-        unavailable_days = add_availability(session, company, period)
+        absence_days = add_absences(committer, ref, company, period)
+        unavailable_days = add_availability(committer, company, period)
         print(" 7. Shift assignments")
-        past_assignments = add_assignments(session, company, shifts, absence_days,
+        past_assignments = add_assignments(committer, company, shifts, absence_days,
                                            unavailable_days, period)
         print(" 8. Work time registrations")
-        add_registrations(session, past_assignments, period)
+        add_registrations(committer, past_assignments, period)
 
-        session.flush()
+        committer.commit()
         print(" 9. Change log (Audit)")
-        add_audit_entries(session, company, period)
+        add_audit_entries(session, committer, company, period)
 
-        print("10. Saving to the database")
-        session.commit()
+        print("10. Saving the last batch")
+        committer.commit()
         print_summary(session)
 
     print()

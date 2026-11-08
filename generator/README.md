@@ -1,6 +1,6 @@
 # Generator danych – `generator/`
 
-Skrypt w Pythonie wypełnia bazę **ewidencja_czasu_pracy** (schemat `work_time`) losowymi danymi. Przy ustawieniach domyślnych w bazie pojawia się ok. **17–21 tys. rekordów**. Każde uruchomienie daje inne dane.
+Skrypt w Pythonie wypełnia bazę **ewidencja_czasu_pracy** (schemat `work_time`) losowymi danymi. Przy ustawieniach domyślnych w bazie pojawia się co najmniej **1 mln rekordów**, zależnie od dnia miesiąca ok. 1,0–1,35 mln, bo rejestracje czasu powstają tylko dla minionych zmian. Uruchomienie trwa ok. 2–3 minuty i potrzebuje ok. 700 MB pamięci. Każde uruchomienie daje inne dane.
 
 ## Pliki
 
@@ -31,12 +31,15 @@ Na początku pliku `generate_data.py` są **ustawienia** (sekcja `SETTINGS`):
 
 | Ustawienie | Domyślnie | Znaczenie |
 |---|---|---|
-| `EMPLOYEE_COUNT` | 100 | liczba pracowników razem z kadrą kierowniczą |
-| `BRANCH_COUNT` | 2 | pierwszy oddział to centrala |
+| `EMPLOYEE_COUNT` | 6200 | liczba pracowników razem z kadrą kierowniczą |
+| `BRANCH_COUNT` | 124 | pierwszy oddział to centrala; najwyżej 200, bo tyle miast ma Faker |
 | `MONTHS_BACK` | 2 | ile miesięcy przed bieżącym ma grafiki (dochodzi bieżący i następny) |
 | `SEED` | `None` | `None` = za każdym razem inne dane; liczba = zawsze te same dane |
+| `COMMIT_BATCH_SIZE` | 10000 | co ile wierszy skrypt zatwierdza transakcję |
 
-Skrypt najpierw **usuwa stare dane** ze wszystkich tabel, a potem tworzy nowe. Wszystko odbywa się w jednej transakcji, więc jeśli wystąpi błąd, baza zostanie bez zmian.
+Mniejszą bazę uzyskasz przez `EMPLOYEE_COUNT = 100` i `BRANCH_COUNT = 2`: to ok. 20 tys. rekordów. Zmieniaj oba ustawienia razem, bo liczbę przydziałów ogranicza pojemność stref w oddziale.
+
+Skrypt najpierw **usuwa stare dane** ze wszystkich tabel, a potem tworzy nowe. Dane zapisuje partiami: słowniki, strukturę firmy i pracowników w jednej transakcji, a grafiki, nieobecności, przydziały, rejestracje i `Audit` co `COMMIT_BATCH_SIZE` wierszy. Jeśli wystąpi błąd, w bazie zostanie tylko część danych. Wystarczy wtedy uruchomić skrypt ponownie.
 
 ## Jak działa (w skrócie)
 

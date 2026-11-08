@@ -153,9 +153,6 @@ ZONE_CAPACITY = {
     "Serwerownia": (2, 4),
 }
 
-CITIES = ["Warszawa", "Kraków", "Wrocław", "Poznań", "Gdańsk", "Łódź", "Katowice",
-          "Lublin", "Szczecin", "Bydgoszcz", "Rzeszów", "Białystok", "Toruń", "Kielce"]
-
 PUBLIC_HOLIDAYS = [
     ("2025-01-01", "Nowy Rok"),
     ("2025-01-06", "Święto Trzech Króli"),

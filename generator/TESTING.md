@@ -35,7 +35,7 @@ python generate_data.py
 cd ..
 ```
 
-Seeder wypisuje ziarno losowania, kroki 1–10 i liczbę rekordów w 24 tabelach. `TOTAL` wynosi ok. 17–21 tys. Linia „skipped … assignments” nie jest błędem: to przydziały pominięte, bo w strefach zabrakło miejsc.
+Seeder wypisuje ziarno losowania, kroki 1–10 i liczbę rekordów w 24 tabelach. Uruchomienie trwa ok. 2–3 minuty. `TOTAL` wynosi co najmniej 1 mln, zależnie od dnia miesiąca ok. 1,0–1,35 mln. Linia „skipped … assignments” nie jest błędem: to przydziały pominięte, bo w strefach zabrakło miejsc.
 
 ## 4. Test poprawności danych
 
@@ -67,7 +67,7 @@ Opcjonalnie możesz sprawdzić powtarzalność: ustaw `SEED = 1234` w `generator
 
 | Wymaganie | Jak to pokazać |
 |---|---|
-| kilkanaście tysięcy rekordów | `TOTAL` w podsumowaniu seedera; najwięcej rekordów mają `Registration`, `Assignment` i `Shift` |
+| kilkanaście tysięcy rekordów | `TOTAL` w podsumowaniu seedera wynosi ponad milion, czyli więcej niż wymagane; najwięcej rekordów mają `Registration`, `Assignment` i `Shift` |
 | mniejsze tabele wprowadzone ręcznie | [`reference_data.py`](reference_data.py): role, uprawnienia, typy umów i nieobecności, stanowiska, święta |
 | za każdym razem inne dane | dwa uruchomienia z kroku 5 |
 | obsługa powiązań między encjami | baza przyjęła wszystkie wstawienia mimo kluczy obcych, a 21 testów z [`check_data.sql`](check_data.sql) sprawdza m.in. hierarchię, umowy, grafiki i strefy |
