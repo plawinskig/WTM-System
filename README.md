@@ -7,7 +7,7 @@ Projekt z przedmiotu „Projektowanie baz danych”: relacyjna baza danych syste
 | Ścieżka | Zawartość |
 |---|---|
 | `docs/` | dokumentacja projektu: rozdziały 1–5 (`project_chapters_1-5.pdf`), rozdziały 6–8 (`project_chapters_6-8.docx` i `.pdf`), diagram relacji (`relational_diagram.png`), wymagania prowadzącego (`course_requirements.pdf`) |
-| `sql/` | schemat bazy, testy więzów integralności, migracja starszej wersji schematu |
+| `sql/` | schemat bazy, testy więzów integralności, raporty i funkcje wyszukiwania ([opis](sql/REPORTS.md)), migracja starszej wersji schematu |
 | `sql/archive/` | schemat i testy sprzed rozdziału 8 – punkt wyjścia dla migracji |
 | `generator/` | generator danych (SQLAlchemy + Faker) i testy poprawności danych – [opis](generator/README.md) |
 | `compose.yaml`, `.env.example` | PostgreSQL w Dockerze |
@@ -30,6 +30,7 @@ Potrzebny jest Docker z Compose. Lokalny klient `psql` nie jest wymagany – pon
    ```
 4. Opcjonalnie sprawdź więzy integralności – to samo polecenie z plikiem `sql/02_integrity_tests.sql`. Każdy test wypisuje `NOTICE:  OK: …`, a dane testowe są na końcu wycofywane.
 5. Wypełnij bazę danymi – zob. [generator/README.md](generator/README.md).
+6. Uruchom raporty i funkcje wyszukiwania – to samo polecenie co w kroku 3, z plikiem `sql/03_reports.sql` (opis 24 zapytań: [sql/REPORTS.md](sql/REPORTS.md)).
 
 Z lokalnym klientem `psql` zamiast `docker compose exec`:
 
@@ -49,6 +50,7 @@ DROP SCHEMA IF EXISTS work_time CASCADE;
 |---|---|
 | `sql/01_schema.sql` | na pustej bazie – pełny schemat z kluczami, ograniczeniami `CHECK` i akcjami referencyjnymi |
 | `sql/02_integrity_tests.sql` | po `01_schema.sql` albo po migracji – testy `CHECK`, kluczy obcych i kaskad w transakcji zakończonej `ROLLBACK`. Wymaga `psql` (używa `\set` i `\echo`); w pgAdmin pomiń linie zaczynające się od `\` |
+| `sql/03_reports.sql` | po wypełnieniu bazy generatorem – 24 raporty i funkcje wyszukiwania (zajęcia 5), tylko `SELECT`. Opis w [`sql/REPORTS.md`](sql/REPORTS.md). W pgAdmin pomiń linie zaczynające się od `\` |
 | `sql/migrate_integrity_constraints.sql` | tylko na bazie utworzonej z `sql/archive/schema_before_migration.sql` – dodaje akcje referencyjne bez utraty danych. Na bazie z `01_schema.sql` nie jest potrzebna |
 | `sql/archive/` | `schema_before_migration.sql` i `tests_before_migration.sql` – stan sprzed rozdziału 8 |
 
