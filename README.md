@@ -7,7 +7,7 @@ Projekt z przedmiotu „Projektowanie baz danych”: relacyjna baza danych syste
 | Ścieżka | Zawartość |
 |---|---|
 | `docs/` | dokumentacja projektu: rozdziały 1–5 (`project_chapters_1-5.pdf`), rozdziały 6–8 (`project_chapters_6-8.docx` i `.pdf`), diagram relacji (`relational_diagram.png`), wymagania prowadzącego (`course_requirements.pdf`) |
-| `sql/` | schemat bazy, testy więzów integralności, raporty i funkcje wyszukiwania ([opis](sql/REPORTS.md)), migracja starszej wersji schematu |
+| `sql/` | schemat bazy, testy więzów integralności, raporty i funkcje wyszukiwania ([opis](sql/REPORTS.md)), indeksy i analiza `EXPLAIN` ([opis](sql/EXPLAIN.md)), migracja starszej wersji schematu |
 | `sql/archive/` | schemat i testy sprzed rozdziału 8 – punkt wyjścia dla migracji |
 | `generator/` | generator danych (SQLAlchemy + Faker) i testy poprawności danych – [opis](generator/README.md) |
 | `compose.yaml`, `.env.example` | PostgreSQL w Dockerze |
@@ -31,6 +31,7 @@ Potrzebny jest Docker z Compose. Lokalny klient `psql` nie jest wymagany – pon
 4. Opcjonalnie sprawdź więzy integralności – to samo polecenie z plikiem `sql/02_integrity_tests.sql`. Każdy test wypisuje `NOTICE:  OK: …`, a dane testowe są na końcu wycofywane.
 5. Wypełnij bazę danymi – zob. [generator/README.md](generator/README.md).
 6. Uruchom raporty i funkcje wyszukiwania – to samo polecenie co w kroku 3, z plikiem `sql/03_reports.sql` (opis 24 zapytań: [sql/REPORTS.md](sql/REPORTS.md)).
+7. Dodaj indeksy wydajnościowe – to samo polecenie z plikiem `sql/04_indexes.sql`. Plany zapytań przed dodaniem indeksów i po nim pokazuje `sql/05_explain.sql`; kolejność uruchamiania i analiza: [sql/EXPLAIN.md](sql/EXPLAIN.md).
 
 Z lokalnym klientem `psql` zamiast `docker compose exec`:
 
@@ -51,6 +52,8 @@ DROP SCHEMA IF EXISTS work_time CASCADE;
 | `sql/01_schema.sql` | na pustej bazie – pełny schemat z kluczami, ograniczeniami `CHECK` i akcjami referencyjnymi |
 | `sql/02_integrity_tests.sql` | po `01_schema.sql` albo po migracji – testy `CHECK`, kluczy obcych i kaskad w transakcji zakończonej `ROLLBACK`. Wymaga `psql` (używa `\set` i `\echo`); w pgAdmin pomiń linie zaczynające się od `\` |
 | `sql/03_reports.sql` | po wypełnieniu bazy generatorem – 24 raporty i funkcje wyszukiwania (zajęcia 5), tylko `SELECT`. Opis w [`sql/REPORTS.md`](sql/REPORTS.md). W pgAdmin pomiń linie zaczynające się od `\` |
+| `sql/04_indexes.sql` | po wypełnieniu bazy generatorem – 9 indeksów wydajnościowych (zajęcia 6). Można uruchamiać wielokrotnie (`IF NOT EXISTS`); generator czyści tabele przez `TRUNCATE`, więc indeksy zostają |
+| `sql/05_explain.sql` | przed `04_indexes.sql` i po nim – `EXPLAIN (ANALYZE, BUFFERS)` wybranych raportów i statystyki użycia indeksów. Opis i wyniki w [`sql/EXPLAIN.md`](sql/EXPLAIN.md). W pgAdmin pomiń linie zaczynające się od `\` |
 | `sql/migrate_integrity_constraints.sql` | tylko na bazie utworzonej z `sql/archive/schema_before_migration.sql` – dodaje akcje referencyjne bez utraty danych. Na bazie z `01_schema.sql` nie jest potrzebna |
 | `sql/archive/` | `schema_before_migration.sql` i `tests_before_migration.sql` – stan sprzed rozdziału 8 |
 
@@ -71,4 +74,4 @@ Dokumentacja w `docs/` powstała przed uporządkowaniem repozytorium i używa da
 
 Polecenia z rozdziału 7 zakładają lokalnego użytkownika `postgres`. W kontenerze z `compose.yaml` użytkownikiem jest `projektowaniebazdanych` – zob. „Szybki start”.
 
-Rozdział 6 wymienia `CREATE INDEX` wśród instrukcji DDL. Indeksy wydajnościowe zostały celowo usunięte ze schematu, bo ich wybór i porównanie `EXPLAIN` przed i po to zakres zajęć 6. W schemacie został tylko unikalny indeks częściowy `uq_schedule_one_published_version`, który jest regułą integralności.
+Rozdział 6 wymienia `CREATE INDEX` wśród instrukcji DDL. Indeksy wydajnościowe nie należą do schematu: są w `sql/04_indexes.sql` (zajęcia 6) i zakłada się je po wypełnieniu bazy danymi. W schemacie został tylko unikalny indeks częściowy `uq_schedule_one_published_version`, który jest regułą integralności.

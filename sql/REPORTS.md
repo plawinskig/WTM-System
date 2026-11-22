@@ -235,4 +235,4 @@ Aby wyszukać coś innego, zmień wartość w `params`, np. `DATE '2026-06-30' A
 | funkcje wyszukiwania | zapytania z parametrami: 2, 3, 5, 6, 8, 10, 22 |
 | poprawność wyników | kontrole krzyżowe: suma spóźnień w 12 = liczba `needs_explanation`, plan w 11 = 8 h × liczba zmian, FTE w 1 ≤ liczba osób, udziały w 4, 14 i 19 sumują się do 100% |
 
-Te same zapytania posłużą na zajęciach 6 do analizy `EXPLAIN` przed dodaniem indeksów i po nim. Wystarczy poprzedzić wybrane zapytanie słowami `EXPLAIN (ANALYZE, BUFFERS)`.
+Analiza `EXPLAIN` tych zapytań przed dodaniem indeksów i po nim (zajęcia 6): [EXPLAIN.md](EXPLAIN.md).

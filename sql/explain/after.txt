@@ -1,0 +1,736 @@
+SET
+=== Query 7: zone utilisation in the current month ===
+                                                                                                        QUERY PLAN                                                                                                        
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort  (cost=28183.23..28327.57 rows=57737 width=132) (actual time=119.401..119.424 rows=555 loops=1)
+   Sort Key: (round(((100.0 * avg((count(*)))) / (zone.capacity)::numeric), 1)) DESC NULLS LAST, branch.name, zone.name
+   Sort Method: quicksort  Memory: 83kB
+   Buffers: shared hit=2424
+   ->  GroupAggregate  (cost=17070.87..19669.04 rows=57737 width=132) (actual time=113.559..119.055 rows=555 loops=1)
+         Group Key: branch.name, zone.zone_id
+         Buffers: shared hit=2418
+         ->  Sort  (cost=17070.87..17215.21 rows=57737 width=60) (actual time=113.532..115.275 rows=30429 loops=1)
+               Sort Key: branch.name, zone.zone_id
+               Sort Method: quicksort  Memory: 3185kB
+               Buffers: shared hit=2418
+               ->  Hash Join  (cost=8866.98..10331.18 rows=57737 width=60) (actual time=72.305..82.968 rows=30429 loops=1)
+                     Hash Cond: (zone.branch_id = branch.branch_id)
+                     Buffers: shared hit=2415
+                     ->  Hash Right Join  (cost=8862.19..10169.65 rows=57737 width=45) (actual time=72.262..80.442 rows=30429 loops=1)
+                           Hash Cond: (assignment.zone_id = zone.zone_id)
+                           Buffers: shared hit=2413
+                           ->  HashAggregate  (cost=8844.70..9422.07 rows=57737 width=20) (actual time=72.159..77.437 rows=30429 loops=1)
+                                 Group Key: assignment.zone_id, shift.start_time
+                                 Batches: 1  Memory Usage: 3601kB
+                                 Buffers: shared hit=2408
+                                 ->  Hash Join  (cost=1423.38..8411.68 rows=57737 width=12) (actual time=4.656..57.466 rows=89459 loops=1)
+                                       Hash Cond: (shift.schedule_id = sch.schedule_id)
+                                       Buffers: shared hit=2408
+                                       ->  Hash Join  (cost=1390.09..8138.02 rows=91244 width=16) (actual time=4.471..49.322 rows=89459 loops=1)
+                                             Hash Cond: (assignment.shift_id = shift.shift_id)
+                                             Buffers: shared hit=2399
+                                             ->  Seq Scan on "Assignment" assignment  (cost=0.00..5765.47 rows=374247 width=8) (actual time=0.007..14.656 rows=374247 loops=1)
+                                                   Buffers: shared hit=2023
+                                             ->  Hash  (cost=1173.23..1173.23 rows=17349 width=16) (actual time=4.338..4.339 rows=17099 loops=1)
+                                                   Buckets: 32768  Batches: 1  Memory Usage: 1058kB
+                                                   Buffers: shared hit=376
+                                                   ->  Bitmap Heap Scan on "Shift" shift  (cost=242.13..1173.23 rows=17349 width=16) (actual time=0.307..2.225 rows=17099 loops=1)
+                                                         Recheck Cond: ((start_time >= date_trunc('month'::text, LOCALTIMESTAMP)) AND (start_time < (date_trunc('month'::text, LOCALTIMESTAMP) + '1 mon'::interval)))
+                                                         Heap Blocks: exact=359
+                                                         Buffers: shared hit=376
+                                                         ->  Bitmap Index Scan on ix_shift_start_time  (cost=0.00..237.79 rows=17349 width=0) (actual time=0.274..0.274 rows=17099 loops=1)
+                                                               Index Cond: ((start_time >= date_trunc('month'::text, LOCALTIMESTAMP)) AND (start_time < (date_trunc('month'::text, LOCALTIMESTAMP) + '1 mon'::interval)))
+                                                               Buffers: shared hit=17
+                                       ->  Hash  (cost=23.88..23.88 rows=753 width=4) (actual time=0.173..0.174 rows=753 loops=1)
+                                             Buckets: 1024  Batches: 1  Memory Usage: 35kB
+                                             Buffers: shared hit=9
+                                             ->  Seq Scan on "Schedule" sch  (cost=0.00..23.88 rows=753 width=4) (actual time=0.009..0.088 rows=753 loops=1)
+                                                   Filter: ((status)::text = 'published'::text)
+                                                   Rows Removed by Filter: 437
+                                                   Buffers: shared hit=9
+                           ->  Hash  (cost=10.55..10.55 rows=555 width=29) (actual time=0.092..0.093 rows=555 loops=1)
+                                 Buckets: 1024  Batches: 1  Memory Usage: 42kB
+                                 Buffers: shared hit=5
+                                 ->  Seq Scan on "Zone" zone  (cost=0.00..10.55 rows=555 width=29) (actual time=0.003..0.034 rows=555 loops=1)
+                                       Buffers: shared hit=5
+                     ->  Hash  (cost=3.24..3.24 rows=124 width=23) (actual time=0.033..0.034 rows=124 loops=1)
+                           Buckets: 1024  Batches: 1  Memory Usage: 15kB
+                           Buffers: shared hit=2
+                           ->  Seq Scan on "Branch" branch  (cost=0.00..3.24 rows=124 width=23) (actual time=0.010..0.017 rows=124 loops=1)
+                                 Buffers: shared hit=2
+ Planning:
+   Buffers: shared hit=411
+ Planning Time: 1.130 ms
+ Execution Time: 120.614 ms
+(60 rows)
+
+=== Query 8: can an employee of the department be assigned on a given day ===
+                                                                                                                                                                                                                              QUERY PLAN                                                                                                                                                                                                                              
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort  (cost=35109.32..35109.38 rows=24 width=78) (actual time=14.223..14.238 rows=40 loops=1)
+   Sort Key: (CASE WHEN (NOT EXISTS(SubPlan 4)) THEN 'no_contract'::text WHEN ((SubPlan 5) IS NOT NULL) THEN ('absent: '::text || ((SubPlan 6))::text) WHEN EXISTS(SubPlan 7) THEN 'declared_unavailable'::text WHEN ((SubPlan 8) IS NOT NULL) THEN ('already_assigned '::text || (SubPlan 9)) WHEN EXISTS(SubPlan 10) THEN 'declared_available'::text ELSE 'no_declaration'::text END), ((((employee.first_name)::text || ' '::text) || (employee.last_name)::text))
+   Sort Method: quicksort  Memory: 27kB
+   Buffers: shared hit=11332
+   CTE params
+     ->  Seq Scan on "Department" department_1  (cost=193.21..251.49 rows=1 width=8) (actual time=2.381..2.396 rows=1 loops=1)
+           Filter: (department_id = (InitPlan 2).col1)
+           Rows Removed by Filter: 250
+           Buffers: shared hit=92
+           InitPlan 2
+             ->  Limit  (cost=193.21..193.21 rows=1 width=12) (actual time=2.245..2.249 rows=1 loops=1)
+                   Buffers: shared hit=74
+                   ->  Sort  (cost=193.21..193.84 rows=251 width=12) (actual time=2.244..2.247 rows=1 loops=1)
+                         Sort Key: (count(*)) DESC, team_1.department_id
+                         Sort Method: top-N heapsort  Memory: 25kB
+                         Buffers: shared hit=74
+                         ->  HashAggregate  (cost=189.45..191.96 rows=251 width=12) (actual time=2.167..2.194 rows=251 loops=1)
+                               Group Key: team_1.department_id
+                               Batches: 1  Memory Usage: 45kB
+                               Buffers: shared hit=71
+                               ->  Hash Join  (cost=15.32..159.94 rows=5901 width=4) (actual time=0.134..1.486 rows=5901 loops=1)
+                                     Hash Cond: (employee_2.team_id = team_1.team_id)
+                                     Buffers: shared hit=71
+                                     ->  Seq Scan on "Employee" employee_2  (cost=0.00..129.00 rows=5901 width=4) (actual time=0.004..0.599 rows=5901 loops=1)
+                                           Filter: (NOT archived)
+                                           Rows Removed by Filter: 299
+                                           Buffers: shared hit=67
+                                     ->  Hash  (cost=9.03..9.03 rows=503 width=8) (actual time=0.118..0.119 rows=503 loops=1)
+                                           Buckets: 1024  Batches: 1  Memory Usage: 28kB
+                                           Buffers: shared hit=4
+                                           ->  Seq Scan on "Team" team_1  (cost=0.00..9.03 rows=503 width=8) (actual time=0.009..0.054 rows=503 loops=1)
+                                                 Buffers: shared hit=4
+           SubPlan 1
+             ->  Aggregate  (cost=53.13..53.14 rows=1 width=4) (actual time=0.119..0.121 rows=1 loops=1)
+                   Buffers: shared hit=16
+                   ->  Nested Loop  (cost=4.61..52.80 rows=66 width=8) (actual time=0.079..0.111 rows=93 loops=1)
+                         Buffers: shared hit=16
+                         ->  Bitmap Heap Scan on "Schedule" sch  (cost=4.32..12.39 rows=4 width=4) (actual time=0.015..0.018 rows=4 loops=1)
+                               Recheck Cond: (department_id = department_1.department_id)
+                               Filter: ((status)::text <> 'archived'::text)
+                               Rows Removed by Filter: 1
+                               Heap Blocks: exact=1
+                               Buffers: shared hit=3
+                               ->  Bitmap Index Scan on uq_schedule_version  (cost=0.00..4.31 rows=5 width=0) (actual time=0.008..0.008 rows=5 loops=1)
+                                     Index Cond: (department_id = department_1.department_id)
+                                     Buffers: shared hit=2
+                         ->  Index Scan using ix_shift_schedule on "Shift" shift  (cost=0.29..9.94 rows=16 width=12) (actual time=0.016..0.021 rows=23 loops=4)
+                               Index Cond: (schedule_id = sch.schedule_id)
+                               Filter: (start_time >= ((LOCALTIMESTAMP)::date + 1))
+                               Rows Removed by Filter: 52
+                               Buffers: shared hit=13
+   ->  Nested Loop  (cost=4.89..34857.28 rows=24 width=78) (actual time=2.550..14.170 rows=40 loops=1)
+         Buffers: shared hit=11332
+         ->  Nested Loop  (cost=4.60..16.05 rows=24 width=22) (actual time=2.472..2.548 rows=40 loops=1)
+               Buffers: shared hit=137
+               ->  Nested Loop  (cost=4.32..13.61 rows=2 width=22) (actual time=2.458..2.479 rows=2 loops=1)
+                     Buffers: shared hit=97
+                     ->  Nested Loop  (cost=0.03..5.52 rows=1 width=22) (actual time=2.449..2.467 rows=1 loops=1)
+                           Buffers: shared hit=94
+                           ->  Hash Join  (cost=0.03..5.49 rows=1 width=14) (actual time=2.447..2.463 rows=1 loops=1)
+                                 Hash Cond: (department.department_id = params.department_id)
+                                 Buffers: shared hit=94
+                                 ->  Seq Scan on "Department" department  (cost=0.00..4.51 rows=251 width=14) (actual time=0.009..0.020 rows=251 loops=1)
+                                       Buffers: shared hit=2
+                                 ->  Hash  (cost=0.02..0.02 rows=1 width=8) (actual time=2.408..2.409 rows=1 loops=1)
+                                       Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                                       Buffers: shared hit=92
+                                       ->  CTE Scan on params  (cost=0.00..0.02 rows=1 width=8) (actual time=2.384..2.398 rows=1 loops=1)
+                                             Buffers: shared hit=92
+                           ->  CTE Scan on params params_1  (cost=0.00..0.02 rows=1 width=8) (actual time=0.000..0.001 rows=1 loops=1)
+                     ->  Bitmap Heap Scan on "Team" team  (cost=4.29..8.07 rows=2 width=8) (actual time=0.007..0.009 rows=2 loops=1)
+                           Recheck Cond: (department_id = params_1.department_id)
+                           Heap Blocks: exact=1
+                           Buffers: shared hit=3
+                           ->  Bitmap Index Scan on uq_team_department_name  (cost=0.00..4.29 rows=2 width=0) (actual time=0.004..0.004 rows=2 loops=1)
+                                 Index Cond: (department_id = params_1.department_id)
+                                 Buffers: shared hit=2
+               ->  Index Scan using ix_employee_team on "Employee" employee_1  (cost=0.28..1.10 rows=12 width=8) (actual time=0.008..0.030 rows=20 loops=2)
+                     Index Cond: (team_id = team.team_id)
+                     Filter: (NOT archived)
+                     Rows Removed by Filter: 0
+                     Buffers: shared hit=40
+         ->  Index Scan using "Employee_pkey" on "Employee" employee  (cost=0.28..0.36 rows=1 width=18) (actual time=0.003..0.003 rows=1 loops=40)
+               Index Cond: (employee_id = employee_1.employee_id)
+               Buffers: shared hit=120
+         SubPlan 4
+           ->  Index Scan using ix_contract_employee_start on "Contract" contract  (cost=0.29..8.31 rows=1 width=0) (actual time=0.005..0.005 rows=1 loops=40)
+                 Index Cond: ((employee_id = employee_1.employee_id) AND (start_date <= params_1.check_date))
+                 Filter: ((end_date IS NULL) OR (end_date >= params_1.check_date))
+                 Rows Removed by Filter: 2
+                 Buffers: shared hit=120
+         SubPlan 5
+           ->  Limit  (cost=4.30..12.44 rows=1 width=19) (actual time=0.005..0.005 rows=0 loops=39)
+                 Buffers: shared hit=112
+                 ->  Nested Loop  (cost=4.30..12.44 rows=1 width=19) (actual time=0.005..0.005 rows=0 loops=39)
+                       Join Filter: (abt.absence_type_id = ab.absence_type_id)
+                       Buffers: shared hit=112
+                       ->  Bitmap Heap Scan on "Absence" ab  (cost=4.30..11.26 rows=1 width=4) (actual time=0.004..0.004 rows=0 loops=39)
+                             Recheck Cond: (employee_id = employee_1.employee_id)
+                             Filter: ((params_1.check_date >= start_date) AND (params_1.check_date <= end_date) AND ((status)::text = 'registered'::text))
+                             Rows Removed by Filter: 2
+                             Heap Blocks: exact=32
+                             Buffers: shared hit=110
+                             ->  Bitmap Index Scan on ix_absence_employee  (cost=0.00..4.30 rows=2 width=0) (actual time=0.002..0.002 rows=2 loops=39)
+                                   Index Cond: (employee_id = employee_1.employee_id)
+                                   Buffers: shared hit=78
+                       ->  Seq Scan on "AbsenceType" abt  (cost=0.00..1.08 rows=8 width=23) (actual time=0.004..0.004 rows=1 loops=2)
+                             Buffers: shared hit=2
+         SubPlan 6
+           ->  Limit  (cost=4.30..12.44 rows=1 width=19) (actual time=0.008..0.009 rows=1 loops=2)
+                 Buffers: shared hit=8
+                 ->  Nested Loop  (cost=4.30..12.44 rows=1 width=19) (actual time=0.007..0.008 rows=1 loops=2)
+                       Join Filter: (abt_1.absence_type_id = ab_1.absence_type_id)
+                       Buffers: shared hit=8
+                       ->  Bitmap Heap Scan on "Absence" ab_1  (cost=4.30..11.26 rows=1 width=4) (actual time=0.005..0.005 rows=1 loops=2)
+                             Recheck Cond: (employee_id = employee_1.employee_id)
+                             Filter: ((params_1.check_date >= start_date) AND (params_1.check_date <= end_date) AND ((status)::text = 'registered'::text))
+                             Rows Removed by Filter: 1
+                             Heap Blocks: exact=2
+                             Buffers: shared hit=6
+                             ->  Bitmap Index Scan on ix_absence_employee  (cost=0.00..4.30 rows=2 width=0) (actual time=0.002..0.002 rows=2 loops=2)
+                                   Index Cond: (employee_id = employee_1.employee_id)
+                                   Buffers: shared hit=4
+                       ->  Seq Scan on "AbsenceType" abt_1  (cost=0.00..1.08 rows=8 width=23) (actual time=0.001..0.001 rows=1 loops=2)
+                             Buffers: shared hit=2
+         SubPlan 7
+           ->  Bitmap Heap Scan on "Availability" av  (cost=4.30..11.35 rows=1 width=0) (actual time=0.003..0.003 rows=0 loops=37)
+                 Recheck Cond: (employee_id = employee_1.employee_id)
+                 Filter: ((NOT available) AND (available_to > params_1.check_date) AND (available_from < (params_1.check_date + 1)))
+                 Rows Removed by Filter: 1
+                 Heap Blocks: exact=27
+                 Buffers: shared hit=101
+                 ->  Bitmap Index Scan on ix_availability_employee  (cost=0.00..4.30 rows=2 width=0) (actual time=0.002..0.002 rows=1 loops=37)
+                       Index Cond: (employee_id = employee_1.employee_id)
+                       Buffers: shared hit=74
+         SubPlan 8
+           ->  Limit  (cost=243.07..697.73 rows=1 width=32) (actual time=0.181..0.181 rows=1 loops=37)
+                 Buffers: shared hit=6669
+                 ->  Nested Loop  (cost=243.07..697.73 rows=1 width=32) (actual time=0.180..0.180 rows=1 loops=37)
+                       Buffers: shared hit=6669
+                       ->  Hash Join  (cost=242.80..697.26 rows=1 width=20) (actual time=0.175..0.175 rows=1 loops=37)
+                             Hash Cond: (shift_1.shift_id = assignment.shift_id)
+                             Buffers: shared hit=6585
+                             ->  Bitmap Heap Scan on "Shift" shift_1  (cost=7.94..461.47 rows=356 width=24) (actual time=0.039..0.122 rows=426 loops=37)
+                                   Recheck Cond: ((start_time >= params_1.check_date) AND (start_time < (params_1.check_date + 1)))
+                                   Heap Blocks: exact=5836
+                                   Buffers: shared hit=5950
+                                   ->  Bitmap Index Scan on ix_shift_start_time  (cost=0.00..7.86 rows=356 width=0) (actual time=0.023..0.023 rows=742 loops=37)
+                                         Index Cond: ((start_time >= params_1.check_date) AND (start_time < (params_1.check_date + 1)))
+                                         Buffers: shared hit=114
+                             ->  Hash  (cost=234.02..234.02 rows=67 width=4) (actual time=0.025..0.025 rows=70 loops=37)
+                                   Buckets: 1024  Batches: 1  Memory Usage: 12kB
+                                   Buffers: shared hit=635
+                                   ->  Bitmap Heap Scan on "Assignment" assignment  (cost=4.94..234.02 rows=67 width=4) (actual time=0.007..0.018 rows=70 loops=37)
+                                         Recheck Cond: (employee_id = employee_1.employee_id)
+                                         Heap Blocks: exact=524
+                                         Buffers: shared hit=635
+                                         ->  Bitmap Index Scan on ix_assignment_employee  (cost=0.00..4.92 rows=67 width=0) (actual time=0.005..0.005 rows=70 loops=37)
+                                               Index Cond: (employee_id = employee_1.employee_id)
+                                               Buffers: shared hit=111
+                       ->  Index Scan using "Schedule_pkey" on "Schedule" sch_1  (cost=0.28..0.47 rows=1 width=4) (actual time=0.002..0.002 rows=1 loops=28)
+                             Index Cond: (schedule_id = shift_1.schedule_id)
+                             Filter: ((status)::text <> 'archived'::text)
+                             Buffers: shared hit=84
+         SubPlan 9
+           ->  Limit  (cost=243.07..697.73 rows=1 width=32) (actual time=0.146..0.146 rows=1 loops=28)
+                 Buffers: shared hit=4041
+                 ->  Nested Loop  (cost=243.07..697.73 rows=1 width=32) (actual time=0.146..0.146 rows=1 loops=28)
+                       Buffers: shared hit=4041
+                       ->  Hash Join  (cost=242.80..697.26 rows=1 width=20) (actual time=0.142..0.142 rows=1 loops=28)
+                             Hash Cond: (shift_2.shift_id = assignment_1.shift_id)
+                             Buffers: shared hit=3957
+                             ->  Bitmap Heap Scan on "Shift" shift_2  (cost=7.94..461.47 rows=356 width=24) (actual time=0.037..0.094 rows=324 loops=28)
+                                   Recheck Cond: ((start_time >= params_1.check_date) AND (start_time < (params_1.check_date + 1)))
+                                   Heap Blocks: exact=3388
+                                   Buffers: shared hit=3472
+                                   ->  Bitmap Index Scan on ix_shift_start_time  (cost=0.00..7.86 rows=356 width=0) (actual time=0.022..0.022 rows=742 loops=28)
+                                         Index Cond: ((start_time >= params_1.check_date) AND (start_time < (params_1.check_date + 1)))
+                                         Buffers: shared hit=84
+                             ->  Hash  (cost=234.02..234.02 rows=67 width=4) (actual time=0.027..0.027 rows=73 loops=28)
+                                   Buckets: 1024  Batches: 1  Memory Usage: 12kB
+                                   Buffers: shared hit=485
+                                   ->  Bitmap Heap Scan on "Assignment" assignment_1  (cost=4.94..234.02 rows=67 width=4) (actual time=0.009..0.020 rows=73 loops=28)
+                                         Recheck Cond: (employee_id = employee_1.employee_id)
+                                         Heap Blocks: exact=401
+                                         Buffers: shared hit=485
+                                         ->  Bitmap Index Scan on ix_assignment_employee  (cost=0.00..4.92 rows=67 width=0) (actual time=0.003..0.003 rows=73 loops=28)
+                                               Index Cond: (employee_id = employee_1.employee_id)
+                                               Buffers: shared hit=84
+                       ->  Index Scan using "Schedule_pkey" on "Schedule" sch_2  (cost=0.28..0.47 rows=1 width=4) (actual time=0.002..0.002 rows=1 loops=28)
+                             Index Cond: (schedule_id = shift_2.schedule_id)
+                             Filter: ((status)::text <> 'archived'::text)
+                             Buffers: shared hit=84
+         SubPlan 10
+           ->  Bitmap Heap Scan on "Availability" av_1  (cost=4.30..11.35 rows=1 width=0) (actual time=0.003..0.003 rows=0 loops=9)
+                 Recheck Cond: (employee_id = employee_1.employee_id)
+                 Filter: (available AND (available_to > params_1.check_date) AND (available_from < (params_1.check_date + 1)))
+                 Rows Removed by Filter: 1
+                 Heap Blocks: exact=6
+                 Buffers: shared hit=24
+                 ->  Bitmap Index Scan on ix_availability_employee  (cost=0.00..4.30 rows=2 width=0) (actual time=0.001..0.001 rows=1 loops=9)
+                       Index Cond: (employee_id = employee_1.employee_id)
+                       Buffers: shared hit=18
+ Planning:
+   Buffers: shared hit=464
+ Planning Time: 2.917 ms
+ Execution Time: 14.444 ms
+(207 rows)
+
+=== Query 9: readiness of the draft schedules for next month ===
+                                                                                      QUERY PLAN                                                                                       
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort  (cost=11208476.19..11208654.09 rows=71159 width=117) (actual time=497.141..497.158 rows=251 loops=1)
+   Sort Key: (count(*) FILTER (WHERE ((count(assignment.assignment_id)) = 0))) DESC, branch.name, department.name
+   Sort Method: quicksort  Memory: 52kB
+   Buffers: shared hit=68772
+   ->  GroupAggregate  (cost=20130.08..11198362.72 rows=71159 width=117) (actual time=439.857..496.830 rows=251 loops=1)
+         Group Key: branch.name, department.department_id, sch.schedule_id
+         Buffers: shared hit=68772
+         ->  Sort  (cost=20130.08..20307.98 rows=71159 width=53) (actual time=439.623..441.763 rows=14340 loops=1)
+               Sort Key: branch.name, department.department_id, sch.schedule_id
+               Sort Method: quicksort  Memory: 1428kB
+               Buffers: shared hit=2499
+               ->  Hash Join  (cost=9968.84..11962.61 rows=71159 width=53) (actual time=420.120..425.829 rows=14340 loops=1)
+                     Hash Cond: (department.branch_id = branch.branch_id)
+                     Buffers: shared hit=2499
+                     ->  Hash Join  (cost=9964.05..11764.64 rows=71159 width=38) (actual time=53.851..58.468 rows=14340 loops=1)
+                           Hash Cond: (sch.department_id = department.department_id)
+                           Buffers: shared hit=2497
+                           ->  Hash Join  (cost=9956.40..11567.04 rows=71159 width=24) (actual time=53.796..57.253 rows=14340 loops=1)
+                                 Hash Cond: (shift.schedule_id = sch.schedule_id)
+                                 Buffers: shared hit=2495
+                                 ->  HashAggregate  (cost=9920.63..10632.22 rows=71159 width=16) (actual time=53.633..55.852 rows=14340 loops=1)
+                                       Group Key: shift.shift_id
+                                       Batches: 1  Memory Usage: 4113kB
+                                       Buffers: shared hit=2486
+                                       ->  Hash Right Join  (cost=1567.67..9525.94 rows=78937 width=12) (actual time=6.389..44.661 rows=95640 loops=1)
+                                             Hash Cond: (assignment.shift_id = shift.shift_id)
+                                             Buffers: shared hit=2486
+                                             ->  Seq Scan on "Assignment" assignment  (cost=0.00..5765.47 rows=374247 width=8) (actual time=0.003..12.875 rows=374247 loops=1)
+                                                   Buffers: shared hit=2023
+                                             ->  Hash  (cost=1380.06..1380.06 rows=15009 width=8) (actual time=6.335..6.337 rows=14340 loops=1)
+                                                   Buckets: 16384  Batches: 1  Memory Usage: 689kB
+                                                   Buffers: shared hit=463
+                                                   ->  Hash Join  (cost=27.01..1380.06 rows=15009 width=8) (actual time=0.061..5.409 rows=14340 loops=1)
+                                                         Hash Cond: (shift.schedule_id = sch_1.schedule_id)
+                                                         Buffers: shared hit=463
+                                                         ->  Seq Scan on "Shift" shift  (cost=0.00..1165.59 rows=71159 width=8) (actual time=0.002..2.213 rows=71159 loops=1)
+                                                               Buffers: shared hit=454
+                                                         ->  Hash  (cost=23.88..23.88 rows=251 width=4) (actual time=0.049..0.050 rows=251 loops=1)
+                                                               Buckets: 1024  Batches: 1  Memory Usage: 17kB
+                                                               Buffers: shared hit=9
+                                                               ->  Seq Scan on "Schedule" sch_1  (cost=0.00..23.88 rows=251 width=4) (actual time=0.005..0.036 rows=251 loops=1)
+                                                                     Filter: ((status)::text = 'draft'::text)
+                                                                     Rows Removed by Filter: 939
+                                                                     Buffers: shared hit=9
+                                 ->  Hash  (cost=20.90..20.90 rows=1190 width=16) (actual time=0.154..0.155 rows=1190 loops=1)
+                                       Buckets: 2048  Batches: 1  Memory Usage: 72kB
+                                       Buffers: shared hit=9
+                                       ->  Seq Scan on "Schedule" sch  (cost=0.00..20.90 rows=1190 width=16) (actual time=0.017..0.068 rows=1190 loops=1)
+                                             Buffers: shared hit=9
+                           ->  Hash  (cost=4.51..4.51 rows=251 width=18) (actual time=0.042..0.042 rows=251 loops=1)
+                                 Buckets: 1024  Batches: 1  Memory Usage: 21kB
+                                 Buffers: shared hit=2
+                                 ->  Seq Scan on "Department" department  (cost=0.00..4.51 rows=251 width=18) (actual time=0.013..0.022 rows=251 loops=1)
+                                       Buffers: shared hit=2
+                     ->  Hash  (cost=3.24..3.24 rows=124 width=23) (actual time=366.254..366.254 rows=124 loops=1)
+                           Buckets: 1024  Batches: 1  Memory Usage: 15kB
+                           Buffers: shared hit=2
+                           ->  Seq Scan on "Branch" branch  (cost=0.00..3.24 rows=124 width=23) (actual time=366.213..366.225 rows=124 loops=1)
+                                 Buffers: shared hit=2
+         SubPlan 1
+           ->  Aggregate  (cost=157.04..157.05 rows=1 width=8) (actual time=0.213..0.213 rows=1 loops=251)
+                 Buffers: shared hit=66273
+                 ->  Nested Loop Anti Join  (cost=19.18..156.98 rows=22 width=0) (actual time=0.111..0.213 rows=1 loops=251)
+                       Buffers: shared hit=66273
+                       ->  Nested Loop  (cost=8.66..78.62 rows=23 width=4) (actual time=0.005..0.020 rows=24 loops=251)
+                             Buffers: shared hit=7463
+                             ->  Bitmap Heap Scan on "Team" team  (cost=4.29..8.07 rows=2 width=4) (actual time=0.001..0.002 rows=2 loops=251)
+                                   Recheck Cond: (department_id = department.department_id)
+                                   Heap Blocks: exact=251
+                                   Buffers: shared hit=753
+                                   ->  Bitmap Index Scan on uq_team_department_name  (cost=0.00..4.29 rows=2 width=0) (actual time=0.001..0.001 rows=2 loops=251)
+                                         Index Cond: (department_id = department.department_id)
+                                         Buffers: shared hit=502
+                             ->  Bitmap Heap Scan on "Employee" employee  (cost=4.38..35.15 rows=12 width=8) (actual time=0.003..0.008 rows=12 loops=503)
+                                   Recheck Cond: (team_id = team.team_id)
+                                   Filter: (NOT archived)
+                                   Rows Removed by Filter: 1
+                                   Heap Blocks: exact=5704
+                                   Buffers: shared hit=6710
+                                   ->  Bitmap Index Scan on ix_employee_team  (cost=0.00..4.37 rows=12 width=0) (actual time=0.001..0.001 rows=12 loops=503)
+                                         Index Cond: (team_id = team.team_id)
+                                         Buffers: shared hit=1006
+                       ->  Hash Join  (cost=10.52..13.45 rows=1 width=4) (actual time=0.008..0.008 rows=1 loops=5901)
+                             Hash Cond: (assignment_1.shift_id = shift_1.shift_id)
+                             Buffers: shared hit=58810
+                             ->  Index Scan using ix_assignment_employee on "Assignment" assignment_1  (cost=0.42..3.19 rows=67 width=8) (actual time=0.001..0.005 rows=47 loops=5901)
+                                   Index Cond: (employee_id = employee.employee_id)
+                                   Buffers: shared hit=57969
+                             ->  Hash  (cost=9.34..9.34 rows=60 width=4) (actual time=0.011..0.011 rows=57 loops=251)
+                                   Buckets: 1024  Batches: 1  Memory Usage: 11kB
+                                   Buffers: shared hit=841
+                                   ->  Index Scan using ix_shift_schedule on "Shift" shift_1  (cost=0.29..9.34 rows=60 width=4) (actual time=0.002..0.007 rows=57 loops=251)
+                                         Index Cond: (schedule_id = sch.schedule_id)
+                                         Buffers: shared hit=841
+ Planning:
+   Buffers: shared hit=105
+ Planning Time: 0.641 ms
+ JIT:
+   Functions: 87
+   Options: Inlining true, Optimization true, Expressions true, Deforming true
+   Timing: Generation 1.472 ms (Deform 0.630 ms), Inlining 48.783 ms, Optimization 177.312 ms, Emission 140.171 ms, Total 367.737 ms
+ Execution Time: 512.469 ms
+(102 rows)
+
+=== Query 10: time card of one employee for the previous month ===
+                                                                                         QUERY PLAN                                                                                         
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort  (cost=13254.71..13254.72 rows=4 width=268) (actual time=48.047..50.798 rows=22 loops=1)
+   Sort Key: shift.start_time
+   Sort Method: quicksort  Memory: 27kB
+   Buffers: shared hit=6938
+   CTE params
+     ->  Result  (cost=12786.10..12786.13 rows=1 width=52) (actual time=47.623..50.366 rows=1 loops=1)
+           Buffers: shared hit=6582
+           InitPlan 1
+             ->  Limit  (cost=12786.10..12786.10 rows=1 width=12) (actual time=47.613..50.354 rows=1 loops=1)
+                   Buffers: shared hit=6582
+                   ->  Sort  (cost=12786.10..12799.63 rows=5411 width=12) (actual time=47.611..50.352 rows=1 loops=1)
+                         Sort Key: (count(*)) DESC, registration_1.employee_id
+                         Sort Method: top-N heapsort  Memory: 25kB
+                         Buffers: shared hit=6582
+                         ->  Finalize HashAggregate  (cost=12704.94..12759.05 rows=5411 width=12) (actual time=46.889..49.986 rows=5540 loops=1)
+                               Group Key: registration_1.employee_id
+                               Batches: 1  Memory Usage: 721kB
+                               Buffers: shared hit=6582
+                               ->  Gather  (cost=11514.51..12650.83 rows=10822 width=12) (actual time=43.753..47.781 rows=14245 loops=1)
+                                     Workers Planned: 2
+                                     Workers Launched: 2
+                                     Buffers: shared hit=6582
+                                     ->  Partial HashAggregate  (cost=10514.51..10568.62 rows=5411 width=12) (actual time=32.158..32.622 rows=4748 loops=3)
+                                           Group Key: registration_1.employee_id
+                                           Batches: 1  Memory Usage: 721kB
+                                           Buffers: shared hit=6582
+                                           Worker 0:  Batches: 1  Memory Usage: 721kB
+                                           Worker 1:  Batches: 1  Memory Usage: 721kB
+                                           ->  Parallel Seq Scan on "Registration" registration_1  (cost=0.00..9203.67 rows=262168 width=4) (actual time=0.011..11.382 rows=209734 loops=3)
+                                                 Buffers: shared hit=6582
+   ->  Hash Left Join  (cost=435.43..468.55 rows=4 width=268) (actual time=47.888..48.041 rows=22 loops=1)
+         Hash Cond: (shift.shift_id = se.shift_id)
+         Buffers: shared hit=6935
+         ->  Nested Loop  (cost=1.27..34.11 rows=4 width=66) (actual time=47.718..47.836 rows=22 loops=1)
+               Buffers: shared hit=6921
+               ->  Nested Loop  (cost=1.00..32.02 rows=7 width=70) (actual time=47.709..47.808 rows=22 loops=1)
+                     Join Filter: ((shift.start_time >= params.period_from) AND (shift.start_time < params.period_to))
+                     Rows Removed by Join Filter: 65
+                     Buffers: shared hit=6855
+                     ->  Nested Loop  (cost=0.70..12.10 rows=60 width=66) (actual time=47.666..47.691 rows=87 loops=1)
+                           Buffers: shared hit=6594
+                           ->  Nested Loop  (cost=0.28..8.32 rows=1 width=70) (actual time=47.656..47.657 rows=1 loops=1)
+                                 Buffers: shared hit=6585
+                                 ->  CTE Scan on params  (cost=0.00..0.02 rows=1 width=52) (actual time=47.626..47.627 rows=1 loops=1)
+                                       Buffers: shared hit=6582
+                                 ->  Index Scan using "Employee_pkey" on "Employee" employee  (cost=0.28..8.30 rows=1 width=18) (actual time=0.024..0.025 rows=1 loops=1)
+                                       Index Cond: (employee_id = params.employee_id)
+                                       Buffers: shared hit=3
+                           ->  Index Scan using ix_assignment_employee on "Assignment" assignment  (cost=0.42..3.11 rows=67 width=8) (actual time=0.008..0.023 rows=87 loops=1)
+                                 Index Cond: (employee_id = employee.employee_id)
+                                 Buffers: shared hit=9
+                     ->  Index Scan using "Shift_pkey" on "Shift" shift  (cost=0.29..0.32 rows=1 width=24) (actual time=0.001..0.001 rows=1 loops=87)
+                           Index Cond: (shift_id = assignment.shift_id)
+                           Buffers: shared hit=261
+               ->  Index Scan using "Schedule_pkey" on "Schedule" sch  (cost=0.28..0.30 rows=1 width=4) (actual time=0.001..0.001 rows=1 loops=22)
+                     Index Cond: (schedule_id = shift.schedule_id)
+                     Filter: ((status)::text = 'published'::text)
+                     Buffers: shared hit=66
+         ->  Hash  (cost=432.71..432.71 rows=116 width=68) (actual time=0.145..0.149 rows=50 loops=1)
+               Buckets: 1024  Batches: 1  Memory Usage: 12kB
+               Buffers: shared hit=14
+               ->  Subquery Scan on se  (cost=426.33..432.71 rows=116 width=68) (actual time=0.090..0.138 rows=50 loops=1)
+                     Buffers: shared hit=14
+                     ->  GroupAggregate  (cost=426.33..431.55 rows=116 width=68) (actual time=0.089..0.133 rows=50 loops=1)
+                           Group Key: registration.shift_id
+                           Buffers: shared hit=14
+                           ->  Sort  (cost=426.33..426.62 rows=116 width=28) (actual time=0.082..0.088 rows=170 loops=1)
+                                 Sort Key: registration.shift_id
+                                 Sort Method: quicksort  Memory: 33kB
+                                 Buffers: shared hit=14
+                                 ->  Nested Loop  (cost=5.32..422.35 rows=116 width=28) (actual time=0.023..0.056 rows=170 loops=1)
+                                       Buffers: shared hit=14
+                                       ->  CTE Scan on params params_1  (cost=0.00..0.02 rows=1 width=4) (actual time=0.001..0.002 rows=1 loops=1)
+                                       ->  Bitmap Heap Scan on "Registration" registration  (cost=5.32..421.17 rows=116 width=32) (actual time=0.021..0.040 rows=170 loops=1)
+                                             Recheck Cond: (params_1.employee_id = employee_id)
+                                             Heap Blocks: exact=11
+                                             Buffers: shared hit=14
+                                             ->  Bitmap Index Scan on ix_registration_employee  (cost=0.00..5.29 rows=116 width=0) (actual time=0.011..0.011 rows=170 loops=1)
+                                                   Index Cond: (employee_id = params_1.employee_id)
+                                                   Buffers: shared hit=3
+ Planning:
+   Buffers: shared hit=118
+ Planning Time: 1.668 ms
+ Execution Time: 50.973 ms
+(84 rows)
+
+=== Query 14: clock-in and clock-out deviation histogram (reads most of Registration) ===
+                                                                    QUERY PLAN                                                                     
+---------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort  (cost=47655.54..47656.04 rows=200 width=144) (actual time=526.768..526.773 rows=11 loops=1)
+   Sort Key: deviations.bucket_from
+   Sort Method: quicksort  Memory: 25kB
+   Buffers: shared hit=7036, temp read=2512 written=1256
+   CTE deviations
+     ->  Hash Join  (cost=2698.79..23568.65 rows=304004 width=42) (actual time=16.085..278.011 rows=419626 loops=1)
+           Hash Cond: (registration.shift_id = shift.shift_id)
+           Buffers: shared hit=7036
+           ->  Seq Scan on "Registration" registration  (cost=0.00..14447.03 rows=420076 width=22) (actual time=0.009..66.204 rows=419626 loops=1)
+                 Filter: ((event_type)::text = ANY ('{work_start,work_end}'::text[]))
+                 Rows Removed by Filter: 209576
+                 Buffers: shared hit=6582
+           ->  Hash  (cost=2055.08..2055.08 rows=51497 width=20) (actual time=16.006..16.007 rows=51630 loops=1)
+                 Buckets: 65536  Batches: 1  Memory Usage: 3134kB
+                 Buffers: shared hit=454
+                 ->  Seq Scan on "Shift" shift  (cost=0.00..2055.08 rows=51497 width=20) (actual time=0.005..11.860 rows=51630 loops=1)
+                       Filter: ((start_time < LOCALTIMESTAMP) AND (start_time >= (LOCALTIMESTAMP - '90 days'::interval)))
+                       Rows Removed by Filter: 19529
+                       Buffers: shared hit=454
+   InitPlan 2
+     ->  Aggregate  (cost=7091.91..7091.92 rows=1 width=8) (actual time=35.043..35.044 rows=1 loops=1)
+           Buffers: temp read=1256 written=1
+           ->  CTE Scan on deviations deviations_1  (cost=0.00..6840.09 rows=100727 width=0) (actual time=0.014..28.055 rows=209813 loops=1)
+                 Filter: ((event_type)::text = 'work_start'::text)
+                 Rows Removed by Filter: 209813
+                 Buffers: temp read=1256 written=1
+   InitPlan 3
+     ->  Aggregate  (cost=7095.68..7095.69 rows=1 width=8) (actual time=35.122..35.123 rows=1 loops=1)
+           Buffers: temp read=1256
+           ->  CTE Scan on deviations deviations_2  (cost=0.00..6840.09 rows=102237 width=0) (actual time=0.003..27.989 rows=209813 loops=1)
+                 Filter: ((event_type)::text = 'work_end'::text)
+                 Rows Removed by Filter: 209813
+                 Buffers: temp read=1256
+   ->  HashAggregate  (cost=9880.13..9891.63 rows=200 width=144) (actual time=526.743..526.757 rows=11 loops=1)
+         Group Key: deviations.bucket_from
+         Batches: 1  Memory Usage: 40kB
+         Buffers: shared hit=7036, temp read=2512 written=1256
+         ->  CTE Scan on deviations  (cost=0.00..6080.08 rows=304004 width=90) (actual time=16.088..365.276 rows=419626 loops=1)
+               Buffers: shared hit=7036, temp written=1255
+ Planning:
+   Buffers: shared hit=22
+ Planning Time: 0.391 ms
+ Execution Time: 528.314 ms
+(43 rows)
+
+=== Query 15: correctness of registration event sequences (an index makes it slower) ===
+                                                                                                                                                  QUERY PLAN                                                                                                                                                   
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort  (cost=104833.06..104848.79 rows=6292 width=112) (actual time=719.783..719.788 rows=2 loops=1)
+   Sort Key: (count(*)) DESC
+   Sort Method: quicksort  Memory: 25kB
+   Buffers: shared hit=162901, temp read=1562 written=1562
+   CTE sequences
+     ->  GroupAggregate  (cost=16.48..100299.06 rows=62920 width=48) (actual time=10.531..607.738 rows=209813 loops=1)
+           Group Key: registration.employee_id, registration.shift_id
+           Buffers: shared hit=162901
+           ->  Incremental Sort  (cost=16.48..93220.54 rows=629202 width=34) (actual time=10.515..502.590 rows=629202 loops=1)
+                 Sort Key: registration.employee_id, registration.shift_id, registration.event_time
+                 Presorted Key: registration.employee_id
+                 Full-sort Groups: 5355  Sort Method: quicksort  Average Memory: 28kB  Peak Memory: 28kB
+                 Pre-sorted Groups: 4509  Sort Method: quicksort  Average Memory: 31kB  Peak Memory: 31kB
+                 Buffers: shared hit=162901
+                 ->  Nested Loop  (cost=0.73..63661.00 rows=629202 width=34) (actual time=10.295..306.888 rows=629202 loops=1)
+                       Buffers: shared hit=162901
+                       ->  Index Scan using ix_registration_employee on "Registration" registration  (cost=0.42..37891.56 rows=629202 width=26) (actual time=0.019..89.536 rows=629202 loops=1)
+                             Buffers: shared hit=58885
+                       ->  Memoize  (cost=0.30..0.32 rows=1 width=12) (actual time=0.000..0.000 rows=1 loops=629202)
+                             Cache Key: registration.shift_id
+                             Cache Mode: logical
+                             Hits: 594530  Misses: 34672  Evictions: 0  Overflows: 0  Memory Usage: 3793kB
+                             Buffers: shared hit=104016
+                             ->  Index Scan using "Shift_pkey" on "Shift" shift  (cost=0.29..0.31 rows=1 width=12) (actual time=0.001..0.001 rows=1 loops=34672)
+                                   Index Cond: (shift_id = registration.shift_id)
+                                   Buffers: shared hit=104016
+   InitPlan 2
+     ->  Aggregate  (cost=1415.70..1415.71 rows=1 width=8) (actual time=19.059..19.059 rows=1 loops=1)
+           Buffers: temp read=1562 written=1
+           ->  CTE Scan on sequences  (cost=0.00..1258.40 rows=62920 width=0) (actual time=0.012..12.309 rows=209813 loops=1)
+                 Buffers: temp read=1562 written=1
+   ->  HashAggregate  (cost=2516.80..2721.29 rows=6292 width=112) (actual time=719.758..719.775 rows=2 loops=1)
+         Group Key: sq.event_sequence, CASE WHEN (sq.event_sequence = ANY ('{"work_start > work_end","work_start > break_start > break_end > work_end"}'::text[])) THEN 'complete'::text WHEN (sq.shift_end > (LOCALTIMESTAMP - '01:00:00'::interval)) THEN 'shift_in_progress'::text ELSE 'invalid'::text END
+         Batches: 1  Memory Usage: 217kB
+         Buffers: shared hit=162901, temp read=1562 written=1562
+         ->  CTE Scan on sequences sq  (cost=0.00..1887.60 rows=62920 width=72) (actual time=10.539..665.552 rows=209813 loops=1)
+               Buffers: shared hit=162901, temp written=1561
+ Planning:
+   Buffers: shared hit=15
+ Planning Time: 0.344 ms
+ JIT:
+   Functions: 24
+   Options: Inlining false, Optimization false, Expressions true, Deforming true
+   Timing: Generation 1.162 ms (Deform 0.384 ms), Inlining 0.000 ms, Optimization 0.355 ms, Emission 9.073 ms, Total 10.590 ms
+ Execution Time: 723.046 ms
+(45 rows)
+
+=== Query 16: verification queue by manager ===
+                                                                                                                         QUERY PLAN                                                                                                                          
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort  (cost=26971.26..27149.84 rows=71435 width=97) (actual time=79.739..79.769 rows=870 loops=1)
+   Sort Key: (count(*) FILTER (WHERE ((registration.verification_status)::text = 'needs_explanation'::text))) DESC, ((CURRENT_DATE - (min(registration.event_time))::date)) DESC, ((((manager.first_name)::text || ' '::text) || (manager.last_name)::text))
+   Sort Method: quicksort  Memory: 114kB
+   Buffers: shared hit=1958, temp read=615 written=616
+   ->  GroupAggregate  (cost=14087.97..17302.54 rows=71435 width=97) (actual time=63.386..79.256 rows=870 loops=1)
+         Group Key: manager.employee_id, mt.name
+         Buffers: shared hit=1958, temp read=615 written=616
+         ->  Sort  (cost=14087.97..14266.56 rows=71435 width=47) (actual time=63.353..69.268 rows=71633 loops=1)
+               Sort Key: manager.employee_id, mt.name, registration.employee_id
+               Sort Method: external merge  Disk: 4920kB
+               Buffers: shared hit=1958, temp read=615 written=616
+               ->  Hash Left Join  (cost=428.74..6130.76 rows=71435 width=47) (actual time=2.742..33.665 rows=71633 loops=1)
+                     Hash Cond: (manager.team_id = mt.team_id)
+                     Buffers: shared hit=1958
+                     ->  Hash Left Join  (cost=413.42..5926.34 rows=71435 width=40) (actual time=2.633..26.408 rows=71633 loops=1)
+                           Hash Cond: (employee.manager_id = manager.employee_id)
+                           Buffers: shared hit=1954
+                           ->  Hash Join  (cost=206.92..5532.19 rows=71435 width=22) (actual time=1.249..16.648 rows=71633 loops=1)
+                                 Hash Cond: (registration.employee_id = employee.employee_id)
+                                 Buffers: shared hit=1887
+                                 ->  Index Only Scan using ix_registration_pending on "Registration" registration  (cost=0.42..5138.04 rows=71435 width=18) (actual time=0.011..7.147 rows=71633 loops=1)
+                                       Heap Fetches: 7143
+                                       Buffers: shared hit=1820
+                                 ->  Hash  (cost=129.00..129.00 rows=6200 width=8) (actual time=1.227..1.228 rows=6200 loops=1)
+                                       Buckets: 8192  Batches: 1  Memory Usage: 307kB
+                                       Buffers: shared hit=67
+                                       ->  Seq Scan on "Employee" employee  (cost=0.00..129.00 rows=6200 width=8) (actual time=0.008..0.572 rows=6200 loops=1)
+                                             Buffers: shared hit=67
+                           ->  Hash  (cost=129.00..129.00 rows=6200 width=22) (actual time=1.372..1.373 rows=6200 loops=1)
+                                 Buckets: 8192  Batches: 1  Memory Usage: 408kB
+                                 Buffers: shared hit=67
+                                 ->  Seq Scan on "Employee" manager  (cost=0.00..129.00 rows=6200 width=22) (actual time=0.004..0.534 rows=6200 loops=1)
+                                       Buffers: shared hit=67
+                     ->  Hash  (cost=9.03..9.03 rows=503 width=15) (actual time=0.103..0.104 rows=503 loops=1)
+                           Buckets: 1024  Batches: 1  Memory Usage: 33kB
+                           Buffers: shared hit=4
+                           ->  Seq Scan on "Team" mt  (cost=0.00..9.03 rows=503 width=15) (actual time=0.006..0.045 rows=503 loops=1)
+                                 Buffers: shared hit=4
+ Planning:
+   Buffers: shared hit=45
+ Planning Time: 0.579 ms
+ Execution Time: 80.390 ms
+(42 rows)
+
+=== Variant A1: one day as a function of the column (an index on start_time cannot be used) ===
+                                                     QUERY PLAN                                                     
+--------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=1878.07..1878.08 rows=1 width=8) (actual time=3.783..3.784 rows=1 loops=1)
+   Buffers: shared hit=454
+   ->  Seq Scan on "Shift" shift  (cost=0.00..1877.18 rows=356 width=0) (actual time=0.011..3.754 rows=742 loops=1)
+         Filter: ((start_time)::date = (CURRENT_DATE + 1))
+         Rows Removed by Filter: 70417
+         Buffers: shared hit=454
+ Planning Time: 0.086 ms
+ Execution Time: 3.801 ms
+(8 rows)
+
+=== Variant A2: the same day as a range on the bare column (an index on start_time can be used) ===
+                                                                    QUERY PLAN                                                                     
+---------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=16.12..16.13 rows=1 width=8) (actual time=0.106..0.107 rows=1 loops=1)
+   Buffers: shared hit=4
+   ->  Index Only Scan using ix_shift_start_time on "Shift" shift  (cost=0.30..14.80 rows=525 width=0) (actual time=0.024..0.070 rows=742 loops=1)
+         Index Cond: ((start_time >= (CURRENT_DATE + 1)) AND (start_time < (CURRENT_DATE + 2)))
+         Heap Fetches: 0
+         Buffers: shared hit=4
+ Planning Time: 0.100 ms
+ Execution Time: 0.123 ms
+(8 rows)
+
+=== Variant B: query 14 with window sums instead of two subqueries over the CTE ===
+                                                                                                                           QUERY PLAN                                                                                                                            
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ WindowAgg  (cost=81204.56..110085.00 rows=304004 width=144) (actual time=455.714..455.728 rows=11 loops=1)
+   Buffers: shared hit=7036, temp read=2573 written=2581
+   ->  GroupAggregate  (cost=63724.39..76644.56 rows=304004 width=82) (actual time=381.919..455.656 rows=11 loops=1)
+         Group Key: ((floor((EXTRACT(epoch FROM CASE WHEN ((registration.event_type)::text = 'work_start'::text) THEN (registration.event_time - shift.start_time) ELSE (registration.event_time - shift.end_time) END) / '300'::numeric)) * '5'::numeric))
+         Buffers: shared hit=7036, temp read=2573 written=2581
+         ->  Sort  (cost=63724.39..64484.40 rows=304004 width=66) (actual time=365.932..409.812 rows=419626 loops=1)
+               Sort Key: ((floor((EXTRACT(epoch FROM CASE WHEN ((registration.event_type)::text = 'work_start'::text) THEN (registration.event_time - shift.start_time) ELSE (registration.event_time - shift.end_time) END) / '300'::numeric)) * '5'::numeric))
+               Sort Method: external merge  Disk: 20584kB
+               Buffers: shared hit=7036, temp read=2573 written=2581
+               ->  Hash Join  (cost=2698.79..23568.65 rows=304004 width=66) (actual time=27.122..269.953 rows=419626 loops=1)
+                     Hash Cond: (registration.shift_id = shift.shift_id)
+                     Buffers: shared hit=7036
+                     ->  Seq Scan on "Registration" registration  (cost=0.00..14447.03 rows=420076 width=22) (actual time=12.592..75.824 rows=419626 loops=1)
+                           Filter: ((event_type)::text = ANY ('{work_start,work_end}'::text[]))
+                           Rows Removed by Filter: 209576
+                           Buffers: shared hit=6582
+                     ->  Hash  (cost=2055.08..2055.08 rows=51497 width=20) (actual time=14.455..14.455 rows=51630 loops=1)
+                           Buckets: 65536  Batches: 1  Memory Usage: 3134kB
+                           Buffers: shared hit=454
+                           ->  Seq Scan on "Shift" shift  (cost=0.00..2055.08 rows=51497 width=20) (actual time=0.026..10.174 rows=51630 loops=1)
+                                 Filter: ((start_time < LOCALTIMESTAMP) AND (start_time >= (LOCALTIMESTAMP - '90 days'::interval)))
+                                 Rows Removed by Filter: 19529
+                                 Buffers: shared hit=454
+ Planning:
+   Buffers: shared hit=9
+ Planning Time: 0.413 ms
+ JIT:
+   Functions: 26
+   Options: Inlining false, Optimization false, Expressions true, Deforming true
+   Timing: Generation 1.460 ms (Deform 0.639 ms), Inlining 0.000 ms, Optimization 0.620 ms, Emission 12.021 ms, Total 14.101 ms
+ Execution Time: 459.066 ms
+(31 rows)
+
+=== Indexes of work_time: size and number of index scans since the statistics reset ===
+   table_name   |            index_name             | index_size | idx_scan 
+----------------+-----------------------------------+------------+----------
+ Absence        | Absence_pkey                      | 184 kB     |        0
+ Absence        | ix_absence_employee               | 160 kB     |       82
+ AbsenceType    | AbsenceType_name_key              | 16 kB      |        0
+ AbsenceType    | AbsenceType_pkey                  | 16 kB      |      192
+ Account        | Account_employee_id_key           | 160 kB     |        0
+ Account        | Account_login_key                 | 240 kB     |        0
+ Account        | Account_pkey                      | 152 kB     |        0
+ AccountRole    | AccountRole_pkey                  | 248 kB     |        0
+ Annex          | Annex_pkey                        | 40 kB      |        0
+ Annex          | uq_annex_effective_from           | 40 kB      |     1163
+ Annex          | uq_annex_number                   | 40 kB      |    11310
+ Assignment     | Assignment_pkey                   | 8232 kB    |        0
+ Assignment     | ix_assignment_employee            | 2600 kB    |    11942
+ Assignment     | uq_assignment_shift_employee      | 8136 kB    |  2464524
+ Audit          | Audit_pkey                        | 336 kB     |        1
+ Availability   | Availability_pkey                 | 208 kB     |        0
+ Availability   | ix_availability_employee          | 176 kB     |       92
+ Branch         | Branch_pkey                       | 16 kB      |      294
+ BranchDayOff   | BranchDayOff_pkey                 | 48 kB      |        0
+ Contract       | Contract_pkey                     | 368 kB     |       60
+ Contract       | ix_contract_employee_start        | 376 kB     |       80
+ ContractType   | ContractType_name_key             | 16 kB      |        0
+ ContractType   | ContractType_pkey                 | 16 kB      |      192
+ DayOff         | DayOff_pkey                       | 16 kB      |        0
+ DayOff         | uq_day_off_date_name              | 16 kB      |        0
+ Department     | Department_pkey                   | 16 kB      |      326
+ Department     | uq_department_branch_name         | 16 kB      |      238
+ Employee       | Employee_pkey                     | 152 kB     |     2084
+ Employee       | Employee_work_email_key           | 328 kB     |        0
+ Employee       | ix_employee_team                  | 72 kB      |     1026
+ Permission     | Permission_permission_name_key    | 16 kB      |        0
+ Permission     | Permission_pkey                   | 16 kB      |        0
+ Position       | Position_name_key                 | 16 kB      |        0
+ Position       | Position_pkey                     | 16 kB      |      407
+ Registration   | Registration_pkey                 | 14 MB      |        0
+ Registration   | ix_registration_employee          | 4280 kB    |        8
+ Registration   | ix_registration_pending           | 2952 kB    |        2
+ Role           | Role_pkey                         | 16 kB      |        0
+ Role           | Role_role_name_key                | 16 kB      |        0
+ RolePermission | RolePermission_pkey               | 16 kB      |        0
+ Schedule       | Schedule_pkey                     | 48 kB      |     2342
+ Schedule       | uq_schedule_one_published_version | 40 kB      |        0
+ Schedule       | uq_schedule_version               | 56 kB      |      156
+ Shift          | Shift_pkey                        | 1576 kB    |   315116
+ Shift          | ix_shift_schedule                 | 504 kB     |      534
+ Shift          | ix_shift_start_time               | 520 kB     |      138
+ Team           | Team_pkey                         | 32 kB      |      488
+ Team           | uq_team_department_name           | 40 kB      |     7023
+ Zone           | Zone_pkey                         | 32 kB      |        0
+ Zone           | uq_zone_branch_name               | 40 kB      |       56
+(50 rows)
+
